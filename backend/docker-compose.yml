@@ -17,7 +17,7 @@ services:
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-4}
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-20}
       RATE_LIMIT_IP_PER_MINUTE: ${RATE_LIMIT_IP_PER_MINUTE:-600}
-      # Modeles locaux (service local-models ci-dessous) : voix wolof de secours, traduction pulaar
+      # Modeles locaux (service local-models ci-dessous) : voix francaise et anglaise, voix wolof de secours, traduction pulaar
       LOCAL_TTS_URL: http://local-models:8001
       LOCAL_MT_URL: http://local-models:8001
     ports:
@@ -46,7 +46,7 @@ services:
     command: ["redis-server", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru", "--save", ""]
     restart: unless-stopped
 
-  # Modeles locaux sur CPU : voix wolof (SpeechT5, MIT) quand Soynade est indisponible, et traduction
+  # Modeles locaux sur CPU : voix francaise et anglaise (Piper), voix wolof (SpeechT5, MIT) quand Soynade est indisponible, et traduction
   # francais <-> pulaar (NLLB-600M + adaptateur LoRA, CC-BY-NC).
   # Pas de port publie : seul le backend l appelle. Modeles (~3 Go) gardes dans un volume (~4 Go de RAM).
   local-models:

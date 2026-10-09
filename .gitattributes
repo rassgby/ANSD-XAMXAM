@@ -1,0 +1,2 @@
+# Les scripts bash doivent garder des fins de ligne Unix pour tourner sur le serveur Linux.
+*.sh text eol=lf

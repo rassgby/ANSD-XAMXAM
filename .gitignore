@@ -1,6 +1,8 @@
 # Ne pousser que frontend/ et backend/
 /*
 !/.gitignore
+!/.gitattributes
+!/deploy.sh
 !/backend/
 !/frontend/
 

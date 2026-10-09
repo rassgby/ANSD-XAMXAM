@@ -34,7 +34,7 @@ services:
       RATE_LIMIT_IP_PER_MINUTE: ${RATE_LIMIT_IP_PER_MINUTE:-600}
       # Seul Nginx joint les instances : on peut lui faire confiance pour l'IP client.
       FORWARDED_ALLOW_IPS: "*"
-      # Modeles locaux (service local-models ci-dessous) : voix wolof de secours, traduction pulaar
+      # Modeles locaux (service local-models ci-dessous) : voix francaise et anglaise, voix wolof de secours, traduction pulaar
       LOCAL_TTS_URL: http://local-models:8001
       LOCAL_MT_URL: http://local-models:8001
     deploy:

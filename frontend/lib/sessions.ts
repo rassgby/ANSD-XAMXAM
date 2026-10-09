@@ -8,7 +8,9 @@
 import type { DetailSource, QueryResponse } from "./api";
 import type { Lang } from "./languages";
 
-export type TurnStatus = "recording" | "transcribing" | "loading" | "done" | "error";
+/** « review » : question vocale enregistree (et transcrite), en attente que l'utilisateur
+ * l'ecoute puis l'envoie ou la supprime. */
+export type TurnStatus = "recording" | "transcribing" | "review" | "loading" | "done" | "error";
 
 /** Mode de discussion : a l'ecrit, ou a voix haute (la reponse est alors lue
  * automatiquement). */

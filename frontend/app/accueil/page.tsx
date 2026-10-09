@@ -3,7 +3,7 @@
 import { UiLangProvider, setUiLanguage, uiText, useUi, type UiKey } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { BookOpen, Check, Copy, Info, Loader2, Pause, RotateCcw, Volume2, X } from "lucide-react";
+import { BookOpen, Check, Copy, Info, Loader2, Pause, RotateCcw, Send, Trash2, Volume2, VolumeX, X } from "lucide-react";
 import { ChatHeader } from "@/components/chat/ChatHeader";
 import { LanguagePicker } from "@/components/chat/LanguagePicker";
 import { Composer } from "@/components/chat/Composer";
@@ -113,7 +113,8 @@ export default function AccueilPage() {
   }, [activeId]);
 
   const isBusy =
-    listening || turns.some((t) => t.status === "loading" || t.status === "recording" || t.status === "transcribing");
+    listening ||
+    turns.some((t) => t.status === "loading" || t.status === "recording" || t.status === "transcribing" || t.status === "review");
 
   /** Met a jour un echange d'une session donnee — pas forcement la session
    * affichee : une reponse qui arrive apres un changement de discussion
@@ -366,9 +367,9 @@ export default function AccueilPage() {
    * to the chat log, so no separate transition logic is needed) — as if a
    * question had already been started, before a word is transcribed. Once
    * recording stops, the user's own clip becomes playable in that same
-   * bubble (`onRecorded`) while transcription — then the RAG answer — are
-   * still in flight, and the turn auto-asks the moment a transcript is
-   * back (no manual "send" step, same hands-free flow as /vocal). */
+   * bubble (`onRecorded`). Once the transcript is back the turn waits in
+   * « review » : the user can listen to the clip, then send it
+   * (handleSendVoice) or delete it (handleDiscardVoice). */
   async function handleMicClick() {
     if (listening) {
       captureControllerRef.current?.stop();
@@ -412,20 +413,42 @@ export default function AccueilPage() {
       },
       onPartial: (text) => patchTurn(sessionId, id, { question: text }),
       onResult: (text) => {
-        patchTurn(sessionId, id, { question: text, status: "loading" });
+        patchTurn(sessionId, id, { question: text, status: "review" });
         if (createsSession) {
           setSessions((all) =>
             all.map((s) => (s.id === sessionId && !s.renamed ? { ...s, title: quickTitle(text) } : s))
           );
           refineTitle(sessionId, text);
         }
-        void runQuery(sessionId, id, text, "voice");
       },
       onError: (message) => {
         patchTurn(sessionId, id, { status: "error", error: message });
       },
       onEnd: () => setListening(false),
     });
+  }
+
+  /** Question vocale ecoutee et validee : elle part comme une question normale. */
+  function handleSendVoice(turn: Turn) {
+    if (!activeId || turn.status !== "review" || !turn.question) return;
+    patchTurn(activeId, turn.id, { status: "loading" });
+    void runQuery(activeId, turn.id, turn.question, "voice");
+  }
+
+  /** Question vocale abandonnee : l'echange disparait (et la discussion avec, s'il etait le seul). */
+  function handleDiscardVoice(turn: Turn) {
+    if (!activeId) return;
+    if (turn.audioUrl) URL.revokeObjectURL(turn.audioUrl);
+    const sessionId = activeId;
+    const session = sessions.find((s) => s.id === sessionId);
+    if (session && session.turns.length <= 1) {
+      setSessions((all) => all.filter((s) => s.id !== sessionId));
+      setActiveId(null);
+      return;
+    }
+    setSessions((all) =>
+      all.map((s) => (s.id === sessionId ? { ...s, turns: s.turns.filter((t) => t.id !== turn.id) } : s))
+    );
   }
 
   /** Quitte la discussion affichee (sans la perdre : elle reste dans
@@ -682,6 +705,28 @@ export default function AccueilPage() {
                               </div>
                             )
                           )}
+
+                          {/* Question vocale a verifier : on l'ecoute (lecteur ci-dessus), puis on l'envoie ou la supprime. */}
+                          {turn.status === "review" && (
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleDiscardVoice(turn)}
+                                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-red-300 hover:text-red-600"
+                              >
+                                <Trash2 size={14} />
+                                {t("delete")}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSendVoice(turn)}
+                                className="inline-flex items-center gap-1.5 rounded-full bg-brand-700 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-brand-800"
+                              >
+                                <Send size={14} />
+                                {t("send")}
+                              </button>
+                            </div>
+                          )}
                         </motion.div>
                       </div>
 
@@ -776,7 +821,23 @@ export default function AccueilPage() {
                                 {t("details")}
                               </button>
 
-                              {/* « Réponse audio » : pour toutes les reponses, question ecrite ou vocale */}
+                              {/* « Réponse audio » : pour toutes les reponses, question ecrite ou vocale.
+                                  Pas encore de voix pulaar : bouton desactive et mention explicite. */}
+                              {turn.response.language === "ff" ? (
+                                <span className="inline-flex items-center gap-1.5 text-sm text-slate-500">
+                                  <button
+                                    type="button"
+                                    disabled
+                                    aria-label={t("audioUnavailablePulaar")}
+                                    title={t("audioUnavailablePulaar")}
+                                    className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-400"
+                                  >
+                                    <VolumeX size={16} />
+                                    {t("listen")}
+                                  </button>
+                                  {t("audioUnavailablePulaar")}
+                                </span>
+                              ) : (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -800,6 +861,7 @@ export default function AccueilPage() {
                                   return t("listen");
                                 })()}
                               </button>
+                              )}
 
                               <CopyButton answer={turn.response.answer} citations={turn.response.citations} />
                             </div>

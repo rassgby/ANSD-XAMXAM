@@ -71,6 +71,7 @@ const FR = {
   micUnavailable: "Le micro n'est pas accessible depuis ce navigateur.",
   noSound: "Aucun son enregistré — réessayez.",
   playbackUnavailable: "La lecture audio n'est pas encore disponible dans cette langue.",
+  audioUnavailablePulaar: "L'audio n'est pas encore disponible en pulaar.",
 };
 
 export type UiKey = keyof typeof FR;
@@ -142,6 +143,7 @@ const EN: UiTexts = {
   micUnavailable: "The microphone is not available in this browser.",
   noSound: "Nothing was recorded — try again.",
   playbackUnavailable: "Audio playback is not yet available in this language.",
+  audioUnavailablePulaar: "Audio is not yet available in Pulaar.",
 };
 
 const WO: UiTexts = {
@@ -210,6 +212,7 @@ const WO: UiTexts = {
   micUnavailable: "Micro bi mënul a dox ci navigateur bii.",
   noSound: "Amul benn kàddu bu ñu denc — jéemaatal.",
   playbackUnavailable: "Déglu tontu bi ci kàddu amagul ci làkk bii.",
+  audioUnavailablePulaar: "Déglu tontu bi ci kàddu amagul ci pulaar.",
 };
 
 const FF: UiTexts = {
@@ -278,6 +281,7 @@ const FF: UiTexts = {
   micUnavailable: "Mikro ngol heɓaaka e navigateur oo.",
   noSound: "Alaa daande winndaaɗe — eto kadi.",
   playbackUnavailable: "Heɗtugol daande alaa tawo e ɗemngal ngal.",
+  audioUnavailablePulaar: "Heɗtugol daande alaa tawo e Pulaar.",
 };
 
 // Sereer et diola : pas encore de traduction, l interface reste en francais.

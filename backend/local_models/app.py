@@ -1,4 +1,9 @@
-"""Modeles locaux (CPU) : voix wolof de secours et traduction francais <-> pulaar.
+"""Modeles locaux (CPU) : voix francaise et anglaise, voix wolof de secours, traduction francais <-> pulaar.
+
+VOIX FRANCAISE ET ANGLAISE (POST /speak, language « fr » ou « en ») : Piper (piper-tts), voix
+PIPER_FR_VOICE (defaut fr_FR-siwis-medium) et PIPER_EN_VOICE (defaut en_US-lessac-medium), ~60 Mo
+chacune, telechargees depuis rhasspy/piper-voices au premier demarrage.
+Rapide sur CPU (~1 s pour une reponse) ; licence de chaque voix : voir sa fiche sur Hugging Face.
 
 TRADUCTION PULAAR (POST /translate) : facebook/nllb-200-distilled-600M (pulaar = « fuv_Latn ») avec
 l'adaptateur LoRA kawkumputer/pulaar-ai-nllb-600m-v4 pour francais -> pulaar ; le modele de base seul
@@ -17,8 +22,9 @@ par plusieurs processus (TTS_WORKERS, chacun avec sa copie du modele, ~350 Mo).
 Les chiffres sont lus en francais (« dix-neuf virgule un pour cent »), comme on les dit couramment au
 Senegal ; le modele lit les deux langues.
 
-    POST /speak  {"text": "..."}  -> audio/wav (16 kHz, mono)
-    GET  /health                  -> {"status": "loading" | "ready" | "error"}
+    POST /speak  {"text": "...", "language": "wo" | "fr" | "en"}  -> audio/mpeg (ou audio/wav)
+    GET  /health  -> {"status": wolof, "voice_fr": francais, "voice_en": anglais, "translation": pulaar}
+                     chacun « loading » | « ready » | « error... »
 """
 
 import asyncio
@@ -30,7 +36,7 @@ import re
 import threading
 import time
 import wave
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
 import imageio_ffmpeg
@@ -54,7 +60,7 @@ STRETCH = os.environ.get("TTS_STRETCH", "rubberband").strip().lower()  # « rubb
 DENOISE = os.environ.get("TTS_DENOISE", "0").strip() in {"1", "true", "yes"}  # debruitage leger
 SAMPLE_RATE = 16000
 
-_state = {"status": "loading", "error": None, "translation": "loading"}
+_state = {"status": "loading", "error": None, "translation": "loading", "voice_fr": "loading", "voice_en": "loading"}
 _pool: ProcessPoolExecutor | None = None
 
 # ------------------------------------------------------------------ processus de calcul
@@ -133,6 +139,70 @@ def _load_mt() -> None:
     except Exception as exc:
         _state["translation"] = f"error: {type(exc).__name__}: {exc}"
         logger.exception("chargement de la traduction pulaar impossible")
+
+
+# ------------------------------------------------------------------ voix francaise et anglaise (Piper)
+
+# Langue -> (voix Piper, phrase de prechauffage, nom pour les messages)
+PIPER_VOICES = {
+    "fr": (os.environ.get("PIPER_FR_VOICE", "fr_FR-siwis-medium"), "Bonjour.", "francaise"),
+    "en": (os.environ.get("PIPER_EN_VOICE", "en_US-lessac-medium"), "Hello.", "anglaise"),
+}
+PIPER_REPO = os.environ.get("PIPER_REPO", "rhasspy/piper-voices")
+PIPER_LENGTH_SCALE = float(os.environ.get("PIPER_LENGTH_SCALE", "1.0"))  # < 1 : plus rapide
+PIPER_MAX_CHARS = int(os.environ.get("PIPER_MAX_CHARS", "4000"))
+PIPER_THREADS = int(os.environ.get("PIPER_THREADS", "2"))  # syntheses simultanees (toutes langues)
+_piper: dict = {}  # langue -> PiperVoice
+_piper_pool = ThreadPoolExecutor(max_workers=PIPER_THREADS)
+
+
+def _load_piper(language: str) -> None:
+    """Telecharge (une fois, dans HF_HOME) puis charge la voix Piper de `language`."""
+    voice_id, warmup, label = PIPER_VOICES[language]
+    try:
+        started = time.time()
+        from huggingface_hub import hf_hub_download
+        from piper import PiperVoice
+
+        locale, name, quality = voice_id.split("-", 2)
+        folder = f"{locale.split('_')[0]}/{locale}/{name}/{quality}"
+        model = hf_hub_download(PIPER_REPO, f"{folder}/{voice_id}.onnx")
+        config = hf_hub_download(PIPER_REPO, f"{folder}/{voice_id}.onnx.json")
+        _piper[language] = PiperVoice.load(model, config_path=config)
+        _piper_wav(language, warmup)  # prechauffage
+        _state[f"voice_{language}"] = "ready"
+        logger.info("voix %s prete en %.1f s (%s)", label, time.time() - started, voice_id)
+    except Exception as exc:
+        _state[f"voice_{language}"] = f"error: {type(exc).__name__}: {exc}"
+        logger.exception("chargement de la voix %s impossible", label)
+
+
+def _piper_wav(language: str, text: str) -> bytes:
+    voice = _piper[language]
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        if hasattr(voice, "synthesize_wav"):  # piper-tts >= 1.3
+            from piper import SynthesisConfig
+
+            voice.synthesize_wav(text, w, syn_config=SynthesisConfig(length_scale=PIPER_LENGTH_SCALE))
+        else:
+            voice.synthesize(text, w, length_scale=PIPER_LENGTH_SCALE)
+    return buf.getvalue()
+
+
+def prepare_piper(text: str, language: str) -> str:
+    """Texte lisible a voix haute : sans markdown ni renvois [1]. En francais, nombres ecrits en
+    toutes lettres (espeak lit mal les milliers separes par des espaces : « 18 126 390 ») ; en anglais,
+    espeak lit bien « 18,126,390 », « 62.9% » et les annees : seuls les milliers a espaces sont recolles."""
+    text = re.sub(r"\*\*|__|#{1,6}\s*|`", "", text)
+    text = re.sub(r"\[\d+(?:[,;]\s*\d+)*\]", "", text)
+    text = re.sub(r"^\s*[-*•]\s+", "", text, flags=re.M)
+    if language == "fr":
+        text = re.sub(r"\d[\d\s  ]*(?:[.,]\d+)?\s?%?", _say_number, text)
+    else:
+        text = re.sub(r"(?<=\d)[  ](?=\d{3}\b)", ",", text)
+    text = re.sub(r"\s+([,.;:!?])", r"\1", " ".join(text.split()))
+    return text[:PIPER_MAX_CHARS]
 
 
 def _load() -> None:
@@ -260,15 +330,36 @@ def _audio_filters() -> str:
 async def _mp3(audio: np.ndarray) -> bytes:
     """MP3 (~10 fois plus leger que le WAV), accelere de SPEED sans changer la hauteur de la voix :
     le modele parle lentement (~2,5 mots/s contre ~3,2 a l'oral)."""
+    return await _encode_mp3(_wav(audio), _audio_filters())
+
+
+async def _encode_mp3(wav_bytes: bytes, filters: str) -> bytes:
     proc = await asyncio.create_subprocess_exec(
         imageio_ffmpeg.get_ffmpeg_exe(), "-v", "error", "-f", "wav", "-i", "pipe:0",
-        "-filter:a", _audio_filters(), "-ac", "1", "-ar", "22050", "-codec:a", "libmp3lame", "-q:a", "2", "-f", "mp3", "pipe:1",
+        "-filter:a", filters, "-ac", "1", "-ar", "22050", "-codec:a", "libmp3lame", "-q:a", "2", "-f", "mp3", "pipe:1",
         stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
     )
-    out, err = await proc.communicate(_wav(audio))
+    out, err = await proc.communicate(wav_bytes)
     if proc.returncode != 0 or not out:
         raise RuntimeError(f"ffmpeg : {err.decode(errors='ignore')[:200]}")
     return out
+
+
+async def _speak_piper(text: str, language: str) -> Response:
+    """Voix Piper : deja propre et au bon debit, seul le volume est normalise."""
+    status = _state[f"voice_{language}"]
+    if status != "ready":
+        raise HTTPException(status_code=503, detail=f"voix {PIPER_VOICES[language][2]} locale : {status}")
+    text = prepare_piper(text, language)
+    if not text:
+        raise HTTPException(status_code=400, detail="texte vide")
+    loop = asyncio.get_running_loop()
+    wav_bytes = await loop.run_in_executor(_piper_pool, _piper_wav, language, text)
+    try:
+        return Response(content=await _encode_mp3(wav_bytes, "loudnorm=I=-16:TP=-1.5:LRA=11"), media_type="audio/mpeg")
+    except RuntimeError:
+        logger.warning("encodage mp3 impossible, envoi en wav", exc_info=True)
+        return Response(content=wav_bytes, media_type="audio/wav")
 
 
 @asynccontextmanager
@@ -276,17 +367,20 @@ async def lifespan(_app: FastAPI):
     # Au premier demarrage, telechargement des modeles (~3 Go) : plusieurs minutes.
     threading.Thread(target=_load, daemon=True).start()
     threading.Thread(target=_load_mt, daemon=True).start()
+    for language in PIPER_VOICES:
+        threading.Thread(target=_load_piper, args=(language,), daemon=True).start()
     yield
-    for pool in (_pool, _mt_pool):
+    for pool in (_pool, _mt_pool, _piper_pool):
         if pool:
             pool.shutdown(cancel_futures=True)
 
 
-app = FastAPI(title="Voix wolof locale", lifespan=lifespan)
+app = FastAPI(title="Modeles locaux (voix et traduction)", lifespan=lifespan)
 
 
 class SpeakRequest(BaseModel):
-    text: str = Field(min_length=1, max_length=4000)
+    text: str = Field(min_length=1, max_length=8000)
+    language: str = "wo"
 
 
 class TranslateRequest(BaseModel):
@@ -315,6 +409,10 @@ async def translate(req: TranslateRequest) -> dict:
 
 @app.post("/speak")
 async def speak(req: SpeakRequest) -> Response:
+    if req.language in PIPER_VOICES:
+        return await _speak_piper(req.text, req.language)
+    if req.language != "wo":
+        raise HTTPException(status_code=400, detail="langue non prise en charge")
     if _state["status"] != "ready":
         raise HTTPException(status_code=503, detail=f"voix wolof locale : {_state['status']}")
     try:

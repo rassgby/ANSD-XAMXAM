@@ -142,6 +142,43 @@ function pickRecorderMimeType(): string | undefined {
   );
 }
 
+/** Enregistrement du micro seul (sans transcription), remis via `onRecorded` a l'arret.
+ * Null si le micro ou MediaRecorder ne sont pas disponibles. */
+async function startClipRecording(
+  handlers: CaptureHandlers
+): Promise<{ stop: () => void; cancel: () => void } | null> {
+  if (!handlers.onRecorded || typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) return null;
+  let stream: MediaStream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch {
+    return null;
+  }
+  const mimeType = pickRecorderMimeType();
+  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+  const chunks: Blob[] = [];
+  let cancelled = false;
+  recorder.ondataavailable = (e) => {
+    if (e.data.size > 0) chunks.push(e.data);
+  };
+  recorder.onstop = () => {
+    stream.getTracks().forEach((track) => track.stop());
+    const blob = new Blob(chunks, { type: recorder.mimeType || mimeType || "audio/webm" });
+    if (!cancelled && blob.size > 0) handlers.onRecorded?.(blob);
+  };
+  recorder.start();
+  const stop = () => {
+    if (recorder.state !== "inactive") recorder.stop();
+  };
+  return {
+    stop,
+    cancel: () => {
+      cancelled = true;
+      stop();
+    },
+  };
+}
+
 /** Starts recording from the mic; resolves once recording has actually
  * started (or failed to — including waiting on the permission prompt). */
 export async function captureVoice(
@@ -151,9 +188,26 @@ export async function captureVoice(
   const Ctor = recognitionCtor();
   const bcp47 = RECOGNITION_LANG[language];
   if (Ctor && bcp47) {
+    // En parallele de la reconnaissance du navigateur, le micro est aussi enregistre pour que
+    // l'utilisateur puisse reecouter sa question avant de l'envoyer (sans enregistrement possible,
+    // la transcription marche quand meme).
+    const recording = await startClipRecording(handlers);
     try {
-      return captureWithBrowser(Ctor, bcp47, handlers);
+      const controller = captureWithBrowser(Ctor, bcp47, {
+        ...handlers,
+        onEnd: () => {
+          recording?.stop();
+          handlers.onEnd();
+        },
+      });
+      return {
+        stop: () => {
+          controller.stop();
+          recording?.stop();
+        },
+      };
     } catch {
+      recording?.cancel();
       // ex. une reconnaissance deja en cours : on tente l'enregistrement classique
     }
   }

@@ -1,4 +1,4 @@
-# Modeles locaux sur CPU : voix wolof (secours de Soynade) et traduction francais <-> pulaar — voir app.py.
+# Modeles locaux sur CPU : voix francaise et anglaise (Piper), voix wolof (secours de Soynade) et traduction francais <-> pulaar — voir app.py.
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

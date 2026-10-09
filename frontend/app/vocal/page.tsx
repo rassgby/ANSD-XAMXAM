@@ -20,7 +20,8 @@ import styles from "./page.module.css";
 
 const EQUALIZER_HEIGHTS = [8, 14, 20, 12, 16, 9, 13, 7];
 
-type Phase = "idle" | "recording" | "transcribing" | "asking" | "done" | "error";
+// « review » : enregistrement transcrit, en attente que l'utilisateur l'ecoute puis l'envoie.
+type Phase = "idle" | "recording" | "transcribing" | "review" | "asking" | "done" | "error";
 type PlaybackState = "idle" | "loading" | "playing" | "paused";
 type QuestionSource = "voice" | "text";
 
@@ -142,9 +143,18 @@ export default function VocalPage() {
         // Clear the previous round's clip up front so it can't linger
         // visible during a fresh recording.
         updateRecordingUrl(null);
+        setQuestion("");
       },
-      onRecorded: (blob) => updateRecordingUrl(URL.createObjectURL(blob)),
-      onResult: (text) => void askAndSpeak(text, "voice"),
+      onRecorded: (blob) => {
+        updateRecordingUrl(URL.createObjectURL(blob));
+        setPhase((p) => (p === "recording" ? "transcribing" : p));
+      },
+      onResult: (text) => {
+        setQuestion(text);
+        setQuestionSource("voice");
+        setResponse(null);
+        setPhase("review");
+      },
       onError: (message) => {
         setPhase("error");
         setErrorMessage(message);
@@ -152,8 +162,20 @@ export default function VocalPage() {
       // Fires after onResult/onError too — only reset to idle if neither of
       // those already moved the phase on (functional update avoids a race
       // where this would otherwise stomp "asking"/"error" back to "idle").
-      onEnd: () => setPhase((p) => (p === "recording" ? "idle" : p)),
+      onEnd: () => setPhase((p) => (p === "recording" || p === "transcribing" ? "idle" : p)),
     });
+  }
+
+  /** Enregistrement ecoute et valide : la question part. */
+  function handleSendRecording() {
+    if (phase === "review" && question) void askAndSpeak(question, "voice");
+  }
+
+  /** Enregistrement abandonne : on revient a l'etat initial. */
+  function handleDiscardRecording() {
+    updateRecordingUrl(null);
+    setQuestion("");
+    setPhase("idle");
   }
 
   function handleTextSubmit() {
@@ -168,6 +190,8 @@ export default function VocalPage() {
       ? "Écoute en cours — wolof"
       : phase === "transcribing"
       ? "Transcription en cours…"
+      : phase === "review"
+      ? "Écoutez votre question, puis envoyez-la"
       : phase === "asking"
       ? "Recherche de la réponse…"
       : phase === "error"
@@ -231,6 +255,16 @@ export default function VocalPage() {
                     <span className={styles.transcriptionText}>{question}</span>
                   </>
                 )
+              )}
+              {phase === "review" && (
+                <div className={styles.reviewActions}>
+                  <button type="button" className={styles.reviewDiscard} onClick={handleDiscardRecording}>
+                    Supprimer
+                  </button>
+                  <button type="button" className={styles.reviewSend} onClick={handleSendRecording}>
+                    Envoyer la question
+                  </button>
+                </div>
               )}
             </div>
           )}

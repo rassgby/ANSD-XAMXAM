@@ -139,6 +139,32 @@
   color: var(--c-primary-deep);
 }
 
+.reviewActions {
+  display: flex;
+  gap: 8px;
+}
+
+.reviewDiscard,
+.reviewSend {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.reviewDiscard {
+  border: 1px solid var(--c-border);
+  color: var(--c-ink);
+  background: #ffffff;
+}
+
+.reviewSend {
+  border: 1px solid #0b6e4f;
+  color: #ffffff;
+  background: #0b6e4f;
+}
+
 .transcriptionNote {
   font-size: 13px;
   color: var(--c-gray);

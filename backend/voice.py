@@ -1,4 +1,4 @@
-"""Voix : reconnaissance (ASR) et synthese (TTS) du wolof via Soynade.
+"""Voix : reconnaissance (ASR) et synthese (TTS) du wolof via Soynade, voix francaise et anglaise locales (Piper).
 
 Contrat avec le frontend (lib/api.ts) :
   POST /api/voice/transcribe  multipart « audio » (webm/ogg/mp4 du navigateur) + « language »
@@ -7,8 +7,9 @@ Contrat avec le frontend (lib/api.ts) :
 
 Soynade n'accepte que wav/mp3/flac : l'enregistrement du navigateur est converti en wav
 mono 16 kHz avec ffmpeg (binaire fourni par le paquet imageio-ffmpeg). Seules les langues de
-SOYNADE_*_LANGUAGES sont traitees ; pour les autres le frontend lit la reponse avec la voix du
-navigateur (francais, anglais). Ni l'audio ni le texte ne sont journalises.
+SOYNADE_*_LANGUAGES sont traitees. Le francais et l'anglais sont lus par Piper dans le service local
+(LOCAL_TTS_URL) ; si ce service ne repond pas, le frontend lit la reponse avec la voix du navigateur.
+Ni l'audio ni le texte ne sont journalises.
 
 Variables d'environnement : SOYNADE_API_KEY (obligatoire), SOYNADE_BASE_URL.
 """
@@ -170,8 +171,14 @@ LOCAL_TTS_URL = os.environ.get("LOCAL_TTS_URL", "").strip().rstrip("/")
 LOCAL_TTS_TIMEOUT = 120
 
 
+PIPER_LANGUAGES = {"fr", "en"}  # lues par Piper dans le service local
+PIPER_TTS_MAX_CHARS = int(os.environ.get("PIPER_TTS_MAX_CHARS", os.environ.get("FR_TTS_MAX_CHARS", "4000")))
+
+
 async def synthesize(text: str, language: str) -> tuple[bytes, str, str]:
-    """Audio (octets, type MIME, fournisseur « soynade » ou « local ») de `text` lu en `language`."""
+    """Audio (octets, type MIME, fournisseur « soynade », « local » ou « piper ») de `text` lu en `language`."""
+    if language in PIPER_LANGUAGES:
+        return await _local_piper(text, language)
     if language not in TTS_LANGUAGES:
         raise VoiceError(501, UNAVAILABLE)
     try:
@@ -181,7 +188,9 @@ async def synthesize(text: str, language: str) -> tuple[bytes, str, str]:
         if exc.status == 400 or not LOCAL_TTS_URL:
             raise
         try:
-            resp = await _http().post(f"{LOCAL_TTS_URL}/speak", json={"text": text}, timeout=LOCAL_TTS_TIMEOUT)
+            resp = await _http().post(
+                f"{LOCAL_TTS_URL}/speak", json={"text": text, "language": "wo"}, timeout=LOCAL_TTS_TIMEOUT
+            )
         except httpx.HTTPError:
             logger.warning("voix wolof locale injoignable")
             raise exc
@@ -189,6 +198,27 @@ async def synthesize(text: str, language: str) -> tuple[bytes, str, str]:
             logger.warning("voix wolof locale indisponible (HTTP %s)", resp.status_code)
             raise exc
         return resp.content, resp.headers.get("content-type", "audio/wav"), "local"
+
+
+async def _local_piper(text: str, language: str) -> tuple[bytes, str, str]:
+    """Voix Piper (francais, anglais) du service local. Sans service local (501) ou s'il echoue, le
+    frontend lit la reponse avec la voix du navigateur."""
+    if not LOCAL_TTS_URL:
+        raise VoiceError(501, UNAVAILABLE)
+    text = _truncate(text, PIPER_TTS_MAX_CHARS)
+    if not text:
+        raise VoiceError(400, EMPTY_TEXT)
+    try:
+        resp = await _http().post(
+            f"{LOCAL_TTS_URL}/speak", json={"text": text, "language": language}, timeout=LOCAL_TTS_TIMEOUT
+        )
+    except httpx.HTTPError:
+        logger.warning("voix locale (%s) injoignable", language)
+        raise VoiceError(503, SERVICE_ERROR)
+    if resp.status_code != 200:
+        logger.warning("voix locale (%s) indisponible (HTTP %s)", language, resp.status_code)
+        raise VoiceError(503, SERVICE_ERROR)
+    return resp.content, resp.headers.get("content-type", "audio/mpeg"), "piper"
 
 
 async def _soynade_synthesize(text: str, language: str) -> tuple[bytes, str]:
