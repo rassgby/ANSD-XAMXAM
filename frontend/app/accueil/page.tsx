@@ -3,7 +3,7 @@
 import { UiLangProvider, setUiLanguage, uiText, useUi, type UiKey } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { BookOpen, Check, Copy, Info, Loader2, Pause, RotateCcw, Send, Trash2, Volume2, VolumeX, X } from "lucide-react";
+import { BookOpen, Check, Copy, Info, Loader2, Pause, RotateCcw, Send, Trash2, Volume2, X } from "lucide-react";
 import { ChatHeader } from "@/components/chat/ChatHeader";
 import { LanguagePicker } from "@/components/chat/LanguagePicker";
 import { Composer } from "@/components/chat/Composer";
@@ -821,23 +821,7 @@ export default function AccueilPage() {
                                 {t("details")}
                               </button>
 
-                              {/* « Réponse audio » : pour toutes les reponses, question ecrite ou vocale.
-                                  Pas encore de voix pulaar : bouton desactive et mention explicite. */}
-                              {turn.response.language === "ff" ? (
-                                <span className="inline-flex items-center gap-1.5 text-sm text-slate-500">
-                                  <button
-                                    type="button"
-                                    disabled
-                                    aria-label={t("audioUnavailablePulaar")}
-                                    title={t("audioUnavailablePulaar")}
-                                    className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-400"
-                                  >
-                                    <VolumeX size={16} />
-                                    {t("listen")}
-                                  </button>
-                                  {t("audioUnavailablePulaar")}
-                                </span>
-                              ) : (
+                              {/* « Réponse audio » : pour toutes les reponses, question ecrite ou vocale. */}
                               <button
                                 type="button"
                                 onClick={() => {
@@ -861,7 +845,6 @@ export default function AccueilPage() {
                                   return t("listen");
                                 })()}
                               </button>
-                              )}
 
                               <CopyButton answer={turn.response.answer} citations={turn.response.citations} />
                             </div>

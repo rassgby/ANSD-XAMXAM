@@ -9,17 +9,21 @@ Soynade n'accepte que wav/mp3/flac : l'enregistrement du navigateur est converti
 mono 16 kHz avec ffmpeg (binaire fourni par le paquet imageio-ffmpeg). Seules les langues de
 SOYNADE_*_LANGUAGES sont traitees. Le francais et l'anglais sont lus par Piper dans le service local
 (LOCAL_TTS_URL) ; si ce service ne repond pas, le frontend lit la reponse avec la voix du navigateur.
+Le pulaar est lu par le modele Wuro-Mali-Tanle (Space Hugging Face Panga-Azazia/MALI-TANLE).
 Ni l'audio ni le texte ne sont journalises.
 
-Variables d'environnement : SOYNADE_API_KEY (obligatoire), SOYNADE_BASE_URL.
+Variables d'environnement : SOYNADE_API_KEY (obligatoire), SOYNADE_BASE_URL, HF_TOKEN (voix pulaar).
 """
 
 import asyncio
+import io
+import json
 import logging
 import os
 import re
 import tempfile
 import time
+import wave
 from collections import OrderedDict
 from pathlib import Path
 
@@ -176,9 +180,11 @@ PIPER_TTS_MAX_CHARS = int(os.environ.get("PIPER_TTS_MAX_CHARS", os.environ.get("
 
 
 async def synthesize(text: str, language: str) -> tuple[bytes, str, str]:
-    """Audio (octets, type MIME, fournisseur « soynade », « local » ou « piper ») de `text` lu en `language`."""
+    """Audio (octets, type MIME, fournisseur « soynade », « local », « piper » ou « tanle ») de `text` lu en `language`."""
     if language in PIPER_LANGUAGES:
         return await _local_piper(text, language)
+    if language == "ff":
+        return await _pulaar_tanle(text), "audio/mpeg", "tanle"
     if language not in TTS_LANGUAGES:
         raise VoiceError(501, UNAVAILABLE)
     try:
@@ -219,6 +225,127 @@ async def _local_piper(text: str, language: str) -> tuple[bytes, str, str]:
         logger.warning("voix locale (%s) indisponible (HTTP %s)", language, resp.status_code)
         raise VoiceError(503, SERVICE_ERROR)
     return resp.content, resp.headers.get("content-type", "audio/mpeg"), "piper"
+
+
+# Voix pulaar : modele Wuro-Mali-Tanle (voix « Fulfulde »), appele via l'API Gradio du Space Hugging Face
+# Panga-Azazia/MALI-TANLE (GPU ZeroGPU : le quota est celui du compte de HF_TOKEN). Chaque appel reserve
+# 180 s de GPU sur le quota restant (seul le temps reellement utilise est decompte) : peu d'appels, en
+# sequence, chacun lisant jusqu'a ~45 s de parole (4096 jetons audio). Les morceaux sont recolles
+# (wav 24 kHz) et encodes en mp3. Quota epuise : plus d'appel jusqu'a l'heure annoncee par Hugging Face.
+TANLE_SPACE_URL = os.environ.get("TANLE_SPACE_URL", "https://panga-azazia-mali-tanle.hf.space").rstrip("/")
+TANLE_VOICE = os.environ.get("TANLE_VOICE", "Fulfulde")
+PULAAR_TTS_MAX_CHARS = int(os.environ.get("PULAAR_TTS_MAX_CHARS", "1200"))
+PULAAR_TTS_CHUNK_CHARS = 450
+PULAAR_TTS_PARALLEL = int(os.environ.get("PULAAR_TTS_PARALLEL", "1"))
+TANLE_TIMEOUT = 180
+TANLE_QUOTA = "La lecture audio en pulaar est momentanément indisponible (quota du service vocal atteint). Réessayez plus tard."
+_TANLE_RETRY = re.compile(r"try again in (\d+):(\d+):(\d+)", re.I)
+_tanle_blocked_until = 0.0  # quota ZeroGPU epuise : pas d'appel avant cet instant (time.monotonic)
+
+
+def _chunks(text: str, limit: int) -> list[str]:
+    """Phrases regroupees en morceaux d'au plus `limit` caracteres (une phrase trop longue est coupee aux virgules)."""
+    pieces: list[str] = []
+    for sentence in _SENTENCE_SPLIT.split(" ".join(text.split())):
+        while len(sentence) > limit:
+            cut = sentence.rfind(", ", 0, limit)
+            cut = cut + 1 if cut > 0 else (sentence.rfind(" ", 0, limit) if sentence.rfind(" ", 0, limit) > 0 else limit)
+            pieces.append(sentence[:cut].strip())
+            sentence = sentence[cut:].strip()
+        if sentence:
+            pieces.append(sentence)
+    out: list[str] = []
+    for piece in pieces:
+        if out and len(out[-1]) + 1 + len(piece) <= limit:
+            out[-1] += " " + piece
+        else:
+            out.append(piece)
+    return out
+
+
+async def _tanle_wav(text: str, headers: dict[str, str]) -> bytes:
+    """Un morceau de texte -> wav, via /gradio_api/call/generate_speech (soumission puis flux SSE du resultat)."""
+    api = f"{TANLE_SPACE_URL}/gradio_api"
+    try:
+        resp = await _http().post(
+            f"{api}/call/generate_speech",
+            headers=headers,
+            json={"data": [TANLE_VOICE, text, 0.4, 0.9, 4096, 28, 1.1]},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        event_id = resp.json()["event_id"]
+        result = await _http().get(f"{api}/call/generate_speech/{event_id}", headers=headers, timeout=TANLE_TIMEOUT)
+        result.raise_for_status()
+    except (httpx.HTTPError, ValueError, KeyError):
+        logger.warning("voix pulaar (Tanle) injoignable", exc_info=True)
+        raise VoiceError(503, SERVICE_ERROR)
+    event, payload = None, None
+    for line in result.text.splitlines():
+        if line.startswith("event:"):
+            event = line[6:].strip()
+        elif line.startswith("data:") and event in ("complete", "error"):
+            payload = line[5:].strip()
+            break
+    if event != "complete" or not payload:
+        logger.warning("voix pulaar (Tanle) : echec (%s) %s", event, (payload or "")[:200])
+        if payload and "quota" in payload.lower():
+            global _tanle_blocked_until
+            m = _TANLE_RETRY.search(payload)
+            wait = int(m[1]) * 3600 + int(m[2]) * 60 + int(m[3]) if m else 600
+            _tanle_blocked_until = time.monotonic() + wait
+            raise VoiceError(503, TANLE_QUOTA)
+        raise VoiceError(503, SERVICE_ERROR)
+    try:
+        audio = json.loads(payload)[0]
+        url = audio["url"] or f"{api}/file={audio['path']}"
+        wav = await _http().get(url, headers=headers, timeout=60)
+        wav.raise_for_status()
+    except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):
+        # Pas d'audio : le modele n'a rien produit pour ce texte (voir le journal du Space).
+        logger.warning("voix pulaar (Tanle) : pas d'audio pour un morceau")
+        raise VoiceError(503, SERVICE_ERROR)
+    return wav.content
+
+
+async def _pulaar_tanle(text: str) -> bytes:
+    text = _truncate(text, PULAAR_TTS_MAX_CHARS)
+    if not text:
+        raise VoiceError(400, EMPTY_TEXT)
+    if time.monotonic() < _tanle_blocked_until:
+        raise VoiceError(503, TANLE_QUOTA)
+    token = os.environ.get("HF_TOKEN", "").strip()
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    limit = asyncio.Semaphore(PULAAR_TTS_PARALLEL)
+
+    async def one(chunk: str) -> bytes:
+        async with limit:
+            return await _tanle_wav(chunk, headers)
+
+    wavs = await asyncio.gather(*(one(c) for c in _chunks(text, PULAAR_TTS_CHUNK_CHARS)))
+    return await _join_to_mp3(wavs)
+
+
+async def _join_to_mp3(wavs: list[bytes]) -> bytes:
+    """Recolle les wav (meme format) avec un court silence entre eux, puis encode en mp3."""
+    frames, params = [], None
+    for data in wavs:
+        with wave.open(io.BytesIO(data)) as w:
+            params = params or w.getparams()
+            frames.append(w.readframes(w.getnframes()))
+    pause = b"\x00" * int(params.framerate * 0.25) * params.sampwidth * params.nchannels
+    joined = io.BytesIO()
+    with wave.open(joined, "wb") as out:
+        out.setparams(params)
+        out.writeframes(pause.join(frames))
+    proc = await asyncio.create_subprocess_exec(
+        _ffmpeg(), "-v", "error", "-f", "wav", "-i", "pipe:0", "-codec:a", "libmp3lame", "-b:a", "64k", "-f", "mp3", "pipe:1",
+        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+    )
+    mp3, _ = await proc.communicate(joined.getvalue())
+    if proc.returncode != 0 or not mp3:
+        raise VoiceError(503, SERVICE_ERROR)
+    return mp3
 
 
 async def _soynade_synthesize(text: str, language: str) -> tuple[bytes, str]:
