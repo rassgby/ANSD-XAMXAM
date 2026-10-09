@@ -1,0 +1,241 @@
+.screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main {
+  flex: 1;
+  padding: 30px var(--side-margin) 40px;
+  display: flex;
+  justify-content: center;
+}
+
+.content {
+  width: 100%;
+  max-width: 860px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.introRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 32px;
+}
+
+.introText {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--c-ink);
+  max-width: 68ch;
+}
+
+.badgeSlot {
+  flex: none;
+}
+
+.card {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.cardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cardTitleGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cardTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--c-primary-deep);
+}
+
+.cardSubtitle {
+  font-size: 12px;
+  color: var(--c-gray);
+}
+
+.chartArea {
+  display: flex;
+  gap: 16px;
+  height: 280px;
+}
+
+.yAxis {
+  width: 44px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding-bottom: 26px;
+  font-size: 12px;
+  color: var(--c-gray);
+}
+
+.plotColumn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.plotArea {
+  flex: 1;
+  position: relative;
+  border-bottom: 1px solid var(--c-gray);
+}
+
+.gridline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--c-border);
+}
+
+.bars {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  align-items: end;
+  padding: 0 32px;
+  gap: 56px;
+}
+
+.barGroup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.barValue {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-primary-deep);
+}
+
+.bar {
+  width: 100%;
+  background: var(--c-primary);
+  box-sizing: border-box;
+}
+
+.barLatest {
+  border-top: 3px solid var(--c-gold);
+}
+
+.xAxis {
+  height: 26px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  padding: 6px 32px 0;
+  gap: 56px;
+  font-size: 12px;
+  color: var(--c-gray);
+  text-align: center;
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding-top: 4px;
+  border-top: 1px solid var(--c-border);
+  flex-wrap: wrap;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.legendSwatch {
+  display: block;
+}
+
+.legendLabel {
+  font-size: 12px;
+  color: var(--c-gray);
+}
+
+.footer {
+  flex: none;
+  padding: 20px var(--side-margin) 28px;
+  border-top: 1px solid var(--c-border);
+  display: flex;
+  justify-content: center;
+}
+
+.footerBar {
+  width: 100%;
+  max-width: 860px;
+}
+
+@media (max-width: 640px) {
+  .introRow {
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .introText {
+    font-size: 17px;
+  }
+
+  .badgeSlot {
+    flex: initial;
+  }
+
+  .card {
+    padding: 18px 14px;
+  }
+
+  .chartArea {
+    gap: 8px;
+    height: 240px;
+  }
+
+  .yAxis {
+    width: 32px;
+    font-size: 11px;
+  }
+
+  .bars,
+  .xAxis {
+    padding-left: 4px;
+    padding-right: 4px;
+    gap: 10px;
+  }
+
+  .xAxis {
+    font-size: 10px;
+  }
+
+  .barValue {
+    font-size: 11px;
+  }
+
+  .legend {
+    gap: 4px 16px;
+  }
+}

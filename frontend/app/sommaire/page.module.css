@@ -1,0 +1,82 @@
+.page {
+  min-height: 100vh;
+  padding: 56px var(--side-margin);
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.eyebrow {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--c-gray);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 8px 0 4px;
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--c-primary-deep);
+}
+
+.lede {
+  margin: 0 0 40px;
+  font-family: var(--font-serif);
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--c-gray);
+  max-width: 68ch;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--c-border);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 20px 24px;
+  background: #ffffff;
+}
+
+.number {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--c-gray);
+  flex: none;
+  width: 20px;
+}
+
+.itemBody {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.itemName {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--c-primary-deep);
+}
+
+.itemName a {
+  color: inherit;
+}
+
+.itemName a:hover {
+  color: var(--c-primary);
+}
+
+.itemDesc {
+  font-size: 13px;
+  color: var(--c-gray);
+}

@@ -1,0 +1,141 @@
+.panel {
+  width: 420px;
+  max-width: 100%;
+  flex: none;
+  border-left: 1px solid var(--c-border);
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+}
+
+.panelHead {
+  flex: none;
+  height: 64px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--c-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panelTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--c-primary-deep);
+}
+
+.closeButton {
+  border: none;
+  background: none;
+  display: flex;
+  padding: 4px;
+}
+
+.panelBody {
+  flex: 1;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.rowLast {
+  border-bottom: none;
+}
+
+.rowLabel {
+  font-size: 12px;
+  color: var(--c-gray);
+}
+
+.rowValue {
+  font-size: 13px;
+  color: var(--c-ink);
+}
+
+.rowValueQuote {
+  font-family: var(--font-serif);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--c-ink);
+}
+
+.verification {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--c-tint);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+}
+
+.verificationText {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--c-ink);
+}
+
+.panelActions {
+  flex: none;
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--c-border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.actionSolid {
+  height: 44px;
+  background: var(--c-primary);
+  border: none;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-decoration: none;
+}
+
+.actionSolidLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.actionOutline {
+  height: 44px;
+  border: 1px solid var(--c-border);
+  background: #ffffff;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.actionOutlineLabel {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--c-ink);
+}
+
+.copyFeedback {
+  font-size: 12px;
+  color: var(--c-primary);
+  text-align: center;
+}

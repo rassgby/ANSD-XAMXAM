@@ -1,0 +1,29 @@
+.citation {
+  border-left: 2px solid var(--c-blue);
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.link {
+  font-size: 13px;
+  color: var(--c-ink);
+}
+
+.link a {
+  color: var(--c-blue);
+  font-weight: 500;
+  text-decoration: none;
+  border-bottom: 1px solid #a9c2d1;
+}
+
+.link a:hover {
+  color: var(--c-primary-deep);
+  border-bottom-color: var(--c-primary-deep);
+}
+
+.meta {
+  font-size: 12px;
+  color: var(--c-gray);
+}

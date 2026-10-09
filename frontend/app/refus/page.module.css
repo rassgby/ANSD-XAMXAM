@@ -1,0 +1,138 @@
+.screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main {
+  flex: 1;
+  padding: 44px var(--side-margin) 40px;
+  display: flex;
+  justify-content: center;
+}
+
+.content {
+  width: 100%;
+  max-width: 760px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.answerText {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--c-ink);
+  max-width: 68ch;
+}
+
+.granularityRows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.granularityRow {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+}
+
+.granularityLabel {
+  width: 180px;
+  flex: none;
+  font-size: 13px;
+  color: var(--c-gray);
+}
+
+.granularityValue {
+  font-size: 15px;
+  color: var(--c-ink);
+}
+
+.granularityValueMuted {
+  font-size: 15px;
+  color: var(--c-gray);
+}
+
+.granularityDivider {
+  height: 1px;
+  background: var(--c-border);
+}
+
+.reroutes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reroutesHeading {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--c-primary-deep);
+}
+
+.reroutesList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.reroute {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  min-height: 44px;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: #ffffff;
+  text-align: left;
+  font-family: var(--font-sans);
+}
+
+.rerouteLabel {
+  font-size: 15px;
+  color: var(--c-ink);
+}
+
+.footer {
+  flex: none;
+  padding: 20px var(--side-margin) 28px;
+  border-top: 1px solid var(--c-border);
+  display: flex;
+  justify-content: center;
+}
+
+.footerBar {
+  width: 100%;
+  max-width: 760px;
+}
+
+@media (max-width: 640px) {
+  .main {
+    padding-top: 28px;
+  }
+
+  .answerText {
+    font-size: 17px;
+  }
+
+  .granularityRow {
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .granularityLabel {
+    width: auto;
+  }
+}

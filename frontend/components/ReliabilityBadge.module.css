@@ -1,0 +1,20 @@
+.badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--c-border);
+  background: var(--c-tint);
+  border-radius: 999px;
+  padding: 8px 14px;
+  align-self: flex-start;
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--c-primary-deep);
+}
+
+.badge {
+  max-width: 100%;
+}

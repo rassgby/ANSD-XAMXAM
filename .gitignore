@@ -1,0 +1,41 @@
+# Ne pousser que frontend/ et backend/
+/*
+!/.gitignore
+!/backend/
+!/frontend/
+
+# Secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Node / Next
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# Données et fichiers lourds
+backend/storage/
+backend/data/
+backend/local_models/*.bin
+backend/local_models/*.safetensors
+*.tar.gz
+*.zip
+*.sqlite3
+*.pickle
+*.bin
+*.pt
+*.onnx
+*.gguf
+*.log
+
+.DS_Store
+.claude/

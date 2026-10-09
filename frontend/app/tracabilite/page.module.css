@@ -1,0 +1,281 @@
+.screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.body {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+}
+
+.conversation {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.conversationContent {
+  flex: 1;
+  padding: 40px 48px 0 var(--side-margin);
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.figures {
+  display: flex;
+  gap: 40px;
+  align-items: flex-start;
+}
+
+.figure {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.figureValue {
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.figureValuePrimary {
+  color: var(--c-primary);
+}
+
+.figureValueDeep {
+  color: var(--c-primary-deep);
+}
+
+.figureLabel {
+  font-size: 13px;
+  color: var(--c-gray);
+}
+
+.figureDivider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--c-border);
+}
+
+.answerText {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--c-ink);
+  max-width: 60ch;
+}
+
+.highlight {
+  background: var(--c-tint);
+  border-bottom: 2px solid var(--c-gold);
+  font-weight: 600;
+}
+
+.conversationFooter {
+  flex: none;
+  padding: 20px 48px 28px var(--side-margin);
+  border-top: 1px solid var(--c-border);
+}
+
+.panel {
+  width: 420px;
+  flex: none;
+  border-left: 1px solid var(--c-border);
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+}
+
+.panelHead {
+  flex: none;
+  height: 64px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--c-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panelTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--c-primary-deep);
+}
+
+.closeButton {
+  border: none;
+  background: none;
+  display: flex;
+  padding: 4px;
+}
+
+.panelBody {
+  flex: 1;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.rowLast {
+  border-bottom: none;
+}
+
+.rowLabel {
+  width: 148px;
+  flex: none;
+  font-size: 12px;
+  color: var(--c-gray);
+}
+
+.rowValue {
+  font-size: 13px;
+  color: var(--c-ink);
+}
+
+.rowValueMono {
+  font-size: 13px;
+  color: var(--c-ink);
+  font-family: var(--font-mono);
+}
+
+.rowValueStrong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-primary-deep);
+}
+
+.cellIdBox {
+  background: var(--c-tint);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cellIdLabel {
+  font-size: 12px;
+  color: var(--c-gray);
+}
+
+.cellIdValue {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--c-blue);
+  word-break: break-all;
+}
+
+.panelActions {
+  flex: none;
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--c-border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.actionSolid {
+  height: 44px;
+  background: var(--c-primary);
+  border: none;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.actionSolidLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.actionOutline {
+  height: 44px;
+  border: 1px solid var(--c-border);
+  background: #ffffff;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.actionOutlineLabel {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--c-ink);
+}
+
+/* Tablette et telephone : le panneau passe sous la conversation. */
+@media (max-width: 1024px) {
+  .body {
+    flex-direction: column;
+  }
+
+  .conversationContent {
+    padding: 32px var(--side-margin) 24px;
+  }
+
+  .conversationFooter {
+    padding: 20px var(--side-margin) 24px;
+  }
+
+  .panel {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--c-border);
+  }
+
+  .panelHead,
+  .panelBody,
+  .panelActions {
+    padding-left: var(--side-margin);
+    padding-right: var(--side-margin);
+  }
+}
+
+@media (max-width: 640px) {
+  .figures {
+    flex-wrap: wrap;
+    gap: 20px 28px;
+  }
+
+  .figureValue {
+    font-size: 32px;
+  }
+
+  .answerText {
+    font-size: 17px;
+  }
+
+  .row {
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .rowLabel {
+    width: auto;
+  }
+}

@@ -1,0 +1,129 @@
+@import "tailwindcss";
+
+/* Tailwind theme tokens — used by the redesigned /accueil (Tailwind +
+   Motion). Deliberately its own richer palette, not the brief's institutional
+   one below: gradients, glow and saturated shadows are all in scope here on
+   purpose. Generates utilities like bg-brand-500, from-brand-400, etc.
+
+   Light-blue-and-white direction, per the ANSD logo: brand-300/400/900 below
+   are sampled pixel values straight from the official logo
+   (public/ansd-logo.png, fetched from ansd.sn) — #add8e6, #7cb2d3, #0f3193
+   — the rest of the scale is interpolated around those three anchors. */
+@theme {
+  --font-sans: "Inter", -apple-system, "Segoe UI", sans-serif;
+  --font-serif: "Source Serif 4", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  --color-brand-50: #f0f8fc;
+  --color-brand-100: #dcedf7;
+  --color-brand-200: #bfe0ef;
+  --color-brand-300: #add8e6;
+  --color-brand-400: #7cb2d3;
+  --color-brand-500: #4a90c2;
+  --color-brand-600: #2f72a8;
+  --color-brand-700: #1f5488;
+  --color-brand-800: #163a68;
+  --color-brand-900: #0f3193;
+  --color-brand-950: #081d5c;
+
+  --shadow-glow: 0 8px 30px -6px rgb(74 144 194 / 0.35);
+  --shadow-glow-lg: 0 20px 60px -12px rgb(74 144 194 / 0.45);
+}
+
+/* Design tokens — from the XAM-XAM brief (chats/chat1.md). Kept as-is for
+   the five static design-reference screens and /sommaire; do not add
+   colors, fonts, or radii beyond what's listed there for those screens. */
+:root {
+  --c-primary: #0b6e4f; /* vert institutionnel */
+  --c-primary-deep: #123b33; /* vert profond — titres, texte fort */
+  --c-gold: #c8922a; /* or — accent rare */
+  --c-ink: #1b1f23; /* texte courant */
+  --c-gray: #5a6670; /* texte secondaire, métadonnées */
+  --c-tint: #f2f6f4; /* fond teinté */
+  --c-border: #d7e0db; /* filets et bordures */
+  --c-blue: #1f5673; /* couche documentaire, liens */
+  --c-bg: #ffffff; /* fond de page */
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+
+  --font-sans: "Inter", -apple-system, "Segoe UI", sans-serif;
+  --font-serif: "Source Serif 4", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  --side-margin: 72px;
+}
+
+/* Marges laterales adaptees a la largeur d'ecran (tablette, telephone). */
+@media (max-width: 1024px) {
+  :root {
+    --side-margin: 40px;
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --side-margin: 16px;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--c-bg);
+  color: var(--c-ink);
+  font-family: var(--font-sans);
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--c-blue);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--c-primary-deep);
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
+}
+
+/* /accueil (Tailwind chat UI) gets its own focus-visible treatment instead
+   of the institutional green above. This rule is unlayered plain CSS, same
+   as the one it overrides — Tailwind's `focus:outline-none` utility lives in
+   `@layer utilities`, and unlayered CSS always wins over layered CSS
+   regardless of specificity, so a Tailwind utility alone can never beat the
+   green rule above; only a same-weight, more specific unlayered rule can. */
+.accueil-shell :focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+}
+
+/* The composer's own focus-within glow (see components/chat/Composer.tsx)
+   already signals focus on the input itself — a second outline box directly
+   on top of it read as a stray, unstyled "cadre" rather than a focus ring. */
+.accueil-shell input:focus-visible,
+.accueil-shell textarea:focus-visible {
+  outline: none;
+}

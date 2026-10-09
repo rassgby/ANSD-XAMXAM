@@ -1,0 +1,237 @@
+.screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main {
+  flex: 1;
+  padding: 28px var(--side-margin) 40px;
+  display: flex;
+  justify-content: center;
+}
+
+.content {
+  width: 100%;
+  max-width: 860px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.listeningCard {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.micBadge {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border: 1.5px solid var(--c-primary);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.micBadgeActive {
+  border-color: #b3261e;
+}
+
+.listeningMeta {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.listeningLabel {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--c-primary-deep);
+}
+
+.equalizer {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 20px;
+}
+
+.eqBar {
+  width: 3px;
+  display: block;
+  background: var(--c-primary);
+  transform-origin: bottom;
+}
+
+.eqBarActive {
+  animation: eqPulse 0.9s ease-in-out infinite;
+}
+
+@keyframes eqPulse {
+  0%,
+  100% {
+    transform: scaleY(0.45);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.stopButton {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--c-ink);
+  background: #ffffff;
+}
+
+.stopButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.errorBanner {
+  margin: 0;
+  padding: 12px 16px;
+  border: 1px solid #e4b7b0;
+  border-radius: var(--radius-sm);
+  background: #fbf1ef;
+  color: #8a2d21;
+  font-size: 13px;
+}
+
+.transcription {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recordingPlayer {
+  height: 36px;
+  width: 280px;
+  max-width: 100%;
+}
+
+.transcriptionLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--c-gray);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.transcriptionText {
+  font-size: 28px;
+  font-weight: 500;
+  color: var(--c-primary-deep);
+}
+
+.transcriptionNote {
+  font-size: 13px;
+  color: var(--c-gray);
+}
+
+.divider {
+  height: 1px;
+  background: var(--c-border);
+}
+
+.answerBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.answerHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 40px;
+  flex-wrap: wrap;
+}
+
+.playback {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  height: 40px;
+  padding: 0 14px;
+  background: #ffffff;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.playback:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.playbackLabel {
+  font-size: 13px;
+  color: var(--c-ink);
+}
+
+.playbackTrack {
+  width: 120px;
+  height: 3px;
+  background: var(--c-border);
+  display: block;
+  position: relative;
+}
+
+.playbackFill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--c-primary);
+  display: block;
+}
+
+.playbackTime {
+  font-size: 12px;
+  color: var(--c-gray);
+  font-family: var(--font-mono);
+}
+
+.answerText {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--c-ink);
+  max-width: 68ch;
+}
+
+.citationsList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.footer {
+  flex: none;
+  padding: 20px var(--side-margin) 28px;
+  border-top: 1px solid var(--c-border);
+  display: flex;
+  justify-content: center;
+}
+
+.footerBar {
+  width: 100%;
+  max-width: 860px;
+}

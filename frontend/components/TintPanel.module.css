@@ -1,0 +1,25 @@
+.panel {
+  background: var(--c-tint);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--c-gray);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.body {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--c-ink);
+}
