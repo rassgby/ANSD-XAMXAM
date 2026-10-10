@@ -3,6 +3,7 @@
 !/.gitignore
 !/.gitattributes
 !/deploy.sh
+!/README.md
 !/backend/
 !/frontend/
 
