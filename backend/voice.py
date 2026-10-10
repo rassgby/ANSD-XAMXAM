@@ -184,15 +184,23 @@ async def synthesize(text: str, language: str) -> tuple[bytes, str, str]:
     if language in PIPER_LANGUAGES:
         return await _local_piper(text, language)
     if language == "ff":
-        return await _pulaar_tanle(text), "audio/mpeg", "tanle"
+        return await _tanle(text, "ff"), "audio/mpeg", "tanle"
     if language not in TTS_LANGUAGES:
         raise VoiceError(501, UNAVAILABLE)
     try:
         content, media_type = await _soynade_synthesize(text, language)
         return content, media_type, "soynade"
     except VoiceError as exc:
-        if exc.status == 400 or not LOCAL_TTS_URL:
+        if exc.status == 400:
             raise
+        # Soynade indisponible (quota, panne, cle absente) : notre modele Hugging Face (voix « Wolof »),
+        # puis la voix wolof locale en dernier recours.
+        logger.warning("soynade indisponible pour la voix wolof : relais par Hugging Face (Tanle)")
+        try:
+            return await _tanle(text, "wo"), "audio/mpeg", "tanle-wo"
+        except VoiceError:
+            if not LOCAL_TTS_URL:
+                raise exc
         try:
             resp = await _http().post(
                 f"{LOCAL_TTS_URL}/speak", json={"text": text, "language": "wo"}, timeout=LOCAL_TTS_TIMEOUT
@@ -227,18 +235,19 @@ async def _local_piper(text: str, language: str) -> tuple[bytes, str, str]:
     return resp.content, resp.headers.get("content-type", "audio/mpeg"), "piper"
 
 
-# Voix pulaar : modele Wuro-Mali-Tanle (voix « Fulfulde »), appele via l'API Gradio du Space Hugging Face
-# Panga-Azazia/MALI-TANLE (GPU ZeroGPU : le quota est celui du compte de HF_TOKEN). Chaque appel reserve
+# Voix pulaar (et voix wolof de secours quand Soynade ne repond pas) : modele Wuro-Nucobiyo-Tanle (voix
+# « Fulfulde » et « Wolof »), appele via l'API Gradio du Space Hugging Face Panga-Azazia/Wuro-Nucobiyo-Tanle
+# (GPU ZeroGPU : le quota est celui du compte de HF_TOKEN). Chaque appel reserve
 # 180 s de GPU sur le quota restant (seul le temps reellement utilise est decompte) : peu d'appels, en
 # sequence, chacun lisant jusqu'a ~45 s de parole (4096 jetons audio). Les morceaux sont recolles
 # (wav 24 kHz) et encodes en mp3. Quota epuise : plus d'appel jusqu'a l'heure annoncee par Hugging Face.
-TANLE_SPACE_URL = os.environ.get("TANLE_SPACE_URL", "https://panga-azazia-mali-tanle.hf.space").rstrip("/")
-TANLE_VOICE = os.environ.get("TANLE_VOICE", "Fulfulde")
+TANLE_SPACE_URL = os.environ.get("TANLE_SPACE_URL", "https://panga-azazia-wuro-nucobiyo-tanle.hf.space").rstrip("/")
+TANLE_VOICES = {"ff": os.environ.get("TANLE_VOICE", "Fulfulde"), "wo": "Wolof"}
 PULAAR_TTS_MAX_CHARS = int(os.environ.get("PULAAR_TTS_MAX_CHARS", "1200"))
 PULAAR_TTS_CHUNK_CHARS = 450
 PULAAR_TTS_PARALLEL = int(os.environ.get("PULAAR_TTS_PARALLEL", "1"))
 TANLE_TIMEOUT = 180
-TANLE_QUOTA = "La lecture audio en pulaar est momentanément indisponible (quota du service vocal atteint). Réessayez plus tard."
+TANLE_QUOTA = "La lecture audio est momentanément indisponible (quota du service vocal atteint). Réessayez plus tard."
 _TANLE_RETRY = re.compile(r"try again in (\d+):(\d+):(\d+)", re.I)
 _tanle_blocked_until = 0.0  # quota ZeroGPU epuise : pas d'appel avant cet instant (time.monotonic)
 
@@ -263,14 +272,14 @@ def _chunks(text: str, limit: int) -> list[str]:
     return out
 
 
-async def _tanle_wav(text: str, headers: dict[str, str]) -> bytes:
+async def _tanle_wav(text: str, voice: str, headers: dict[str, str]) -> bytes:
     """Un morceau de texte -> wav, via /gradio_api/call/generate_speech (soumission puis flux SSE du resultat)."""
     api = f"{TANLE_SPACE_URL}/gradio_api"
     try:
         resp = await _http().post(
             f"{api}/call/generate_speech",
             headers=headers,
-            json={"data": [TANLE_VOICE, text, 0.4, 0.9, 4096, 28, 1.1]},
+            json={"data": [voice, text, 0.4, 0.9, 4096, 28, 1.1]},
             timeout=30,
         )
         resp.raise_for_status()
@@ -308,7 +317,9 @@ async def _tanle_wav(text: str, headers: dict[str, str]) -> bytes:
     return wav.content
 
 
-async def _pulaar_tanle(text: str) -> bytes:
+async def _tanle(text: str, language: str) -> bytes:
+    """`text` lu par le modele Tanle avec la voix de `language` (« ff » ou « wo »), en mp3."""
+    voice = TANLE_VOICES[language]
     text = _truncate(text, PULAAR_TTS_MAX_CHARS)
     if not text:
         raise VoiceError(400, EMPTY_TEXT)
@@ -320,7 +331,7 @@ async def _pulaar_tanle(text: str) -> bytes:
 
     async def one(chunk: str) -> bytes:
         async with limit:
-            return await _tanle_wav(chunk, headers)
+            return await _tanle_wav(chunk, voice, headers)
 
     wavs = await asyncio.gather(*(one(c) for c in _chunks(text, PULAAR_TTS_CHUNK_CHARS)))
     return await _join_to_mp3(wavs)

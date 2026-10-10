@@ -970,8 +970,8 @@ async def voice_speak(
         content, media_type, provider = await voice.synthesize(req.text, req.language)
     except voice.VoiceError as exc:
         raise HTTPException(status_code=exc.status, detail=exc.detail)
-    # Voix wolof locale (secours) gardee peu de temps : la voix Soynade reprend des que son quota revient.
+    # Voix wolof de secours (Hugging Face, locale) gardees peu de temps : la voix Soynade reprend des que son quota revient.
     # Les voix francaise et anglaise (Piper) sont les voix normales : gardees aussi longtemps que celle de Soynade.
-    ttl = 3600 if provider == "local" else 7 * 24 * 3600
+    ttl = 3600 if provider in ("local", "tanle-wo") else 7 * 24 * 3600
     await store.set_json(key, {"audio": base64.b64encode(content).decode("ascii"), "type": media_type}, ttl=ttl)
     return Response(content=content, media_type=media_type)
