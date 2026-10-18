@@ -46,7 +46,7 @@ function RenameInput({ initial, onDone }: { initial: string; onDone: (title: str
       }}
       onBlur={() => finish(value)}
       aria-label={t("newTitle")}
-      className="w-full rounded-lg border border-brand-300 bg-white px-3 py-1.5 text-sm font-semibold text-brand-900 shadow-sm outline-none ring-2 ring-brand-100"
+      className="w-full rounded-lg border border-brand-300 bg-white px-3 py-1.5 text-base font-semibold sm:text-sm text-brand-900 shadow-sm outline-none ring-2 ring-brand-100"
     />
   );
 }
@@ -100,7 +100,7 @@ function SidebarContent({
             onKeyDown={(e) => e.key === "Escape" && setQuery("")}
             placeholder={t("searchChats")}
             aria-label={t("searchChats")}
-            className="min-w-0 flex-1 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+            className="min-w-0 flex-1 bg-transparent text-base text-slate-700 sm:text-sm placeholder:text-slate-400 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
           />
           {query && (
             <button

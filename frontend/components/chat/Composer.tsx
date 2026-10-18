@@ -95,7 +95,9 @@ export function Composer({
           disabled={disabled}
           className={cn(
             "min-w-0 flex-1 resize-none self-center bg-transparent py-1.5 font-medium leading-6 text-slate-800 placeholder:text-slate-400 focus:outline-none disabled:opacity-60",
-            isHero ? "text-base" : "text-sm"
+            // 16 px minimum sur telephone : en dessous, iOS zoome sur le champ
+            // au toucher et toute la page se decale.
+            isHero ? "text-base" : "text-base sm:text-sm"
           )}
         />
 

@@ -1,5 +1,17 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
+
+// Le clavier du telephone redimensionne la page (Android) au lieu de la
+// recouvrir : la zone de saisie reste visible au-dessus. Le zoom manuel reste
+// permis (accessibilite) ; le zoom automatique d'iOS est evite en gardant les
+// champs a 16 px minimum.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  interactiveWidget: "resizes-content",
+  themeColor: "#ffffff",
+};
 
 export const metadata: Metadata = {
   title: "XAMXAM — Statistiques officielles du Sénégal",

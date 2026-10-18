@@ -75,6 +75,36 @@ html,
 body {
   margin: 0;
   padding: 0;
+  /* Pas d'effet elastique ni de « tirer pour rafraichir » qui fait bouger la
+     page entiere sur telephone : seules les zones defilables defilent. */
+  overscroll-behavior: none;
+  /* iOS agrandit le texte en paysage sans cela. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Un double appui sur un bouton ne zoome plus la page. */
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+/* Les zones defilables de /accueil gardent leur defilement pour elles et
+   defilent au doigt (le zoom manuel reste permis). L'en-tete et la zone de
+   saisie, hors de ces zones, ne bougent pas. */
+.accueil-shell .overflow-y-auto {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y pinch-zoom;
+}
+
+/* Encoche et barre d'accueil de l'iPhone (viewport-fit=cover) : l'en-tete et la
+   zone de saisie restent hors des zones non affichables. */
+.accueil-shell {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 body {

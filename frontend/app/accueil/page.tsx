@@ -12,6 +12,7 @@ import { TypingIndicator } from "@/components/chat/TypingIndicator";
 import { HeroTitle } from "@/components/chat/HeroTitle";
 import { RichText } from "@/components/chat/RichText";
 import { cn } from "@/lib/utils";
+import { useVisibleViewportHeight } from "@/lib/viewport";
 import { copyAnswer } from "@/lib/copy";
 import { SessionSidebar } from "@/components/chat/SessionSidebar";
 import { VoiceButton } from "@/components/chat/VoiceButton";
@@ -542,6 +543,8 @@ export default function AccueilPage() {
     return () => speechControllerRef.current?.cancel();
   }, []);
 
+  useVisibleViewportHeight();
+
 
   const t = (key: UiKey, vars?: Record<string, string | number>) => uiText(key, vars, lang);
 
@@ -556,9 +559,11 @@ export default function AccueilPage() {
     // conversation view, leaving a dead gap under the composer with nothing
     // controlling where it sat. `position: fixed` has no such dependency:
     // its box is computed directly from the viewport via `inset`, not
-    // from any ancestor's height at all.
+    // from any ancestor's height at all. Its height follows the visible part of
+    // the screen (--app-height, see lib/viewport.ts) so the phone keyboard
+    // never pushes the header off-screen.
     <UiLangProvider value={lang}>
-    <div className="accueil-shell fixed inset-0 z-20 flex flex-col overflow-hidden bg-white">
+    <div className="accueil-shell fixed inset-x-0 top-[var(--app-top,0px)] z-20 flex h-[var(--app-height,100dvh)] flex-col overflow-hidden bg-white">
       <ChatHeader
         lang={lang}
         onLangChange={changeLang}
