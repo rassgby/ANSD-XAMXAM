@@ -105,7 +105,7 @@ Après chaque `git push` sur `main`, si les vérifications passent, GitHub Actio
 
 Mise en place, une seule fois :
 
-1. **Sur le serveur** : cloner le dépôt (par exemple dans `~/xamxam`), remplir `backend/.env`, et réussir un premier `./deploy.sh` à la main. L'utilisateur SSH doit pouvoir lancer `docker` sans `sudo` (groupe `docker`) et faire `git fetch` (dépôt privé : clé de déploiement GitHub en lecture seule sur le serveur).
+1. **Sur le serveur** : cloner le dépôt (par défaut dans `~/ANSD-XAMXAM`), remplir `backend/.env`, et réussir un premier `./deploy.sh` à la main. L'utilisateur SSH doit pouvoir lancer `docker` sans `sudo` (groupe `docker`) et faire `git fetch` (dépôt privé : clé de déploiement GitHub en lecture seule sur le serveur).
 2. **Une clé SSH réservée au déploiement**, créée sur votre poste :
 
    ```bash
@@ -122,7 +122,7 @@ Mise en place, une seule fois :
    | `DEPLOY_SSH_KEY` | secret | contenu de `xamxam_deploy` (clé privée) |
    | `DEPLOY_KNOWN_HOSTS` | secret | résultat de `ssh-keyscan -p <port> <serveur>` |
    | `DEPLOY_PORT` | secret | port SSH (facultatif, 22 par défaut) |
-   | `DEPLOY_PATH` | variable | dossier du dépôt sur le serveur (défaut `~/xamxam`) |
+   | `DEPLOY_PATH` | variable | dossier du dépôt sur le serveur (défaut `~/ANSD-XAMXAM`) |
    | `DEPLOY_API_URL` | variable | `--api-url` (adresse publique de l'API) |
    | `DEPLOY_FRONT_URL` | variable | `--front-url` (adresse publique de l'interface) |
    | `DEPLOY_ARGS` | variable | autres options de `deploy.sh`, facultatif : `--backend-only` si l'interface est hébergée ailleurs, `--scale` |

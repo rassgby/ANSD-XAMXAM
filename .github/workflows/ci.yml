@@ -79,7 +79,7 @@ jobs:
         env:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
-          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '~/xamxam' }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '~/ANSD-XAMXAM' }}
           DEPLOY_ARGS: ${{ vars.DEPLOY_ARGS }}
           API_URL: ${{ vars.DEPLOY_API_URL }}
           FRONT_URL: ${{ vars.DEPLOY_FRONT_URL }}
@@ -93,10 +93,12 @@ jobs:
             "$DEPLOY_USER@$DEPLOY_HOST" bash -s -- "$DEPLOY_PATH" "$GITHUB_SHA" $args <<'REMOTE'
           set -euo pipefail
           path="$1"; sha="$2"; shift 2
-          cd "${path/#\~/$HOME}"
+          path="${path/#\~/$HOME}"
+          echo "Serveur : $(whoami)@$(hostname), dossier $path, options : ${*:-aucune}"
+          cd "$path" || { echo "::error::Dossier $path introuvable sur le serveur (variable DEPLOY_PATH)."; exit 1; }
           git fetch --prune origin main
           git checkout -q main
-          git merge --ff-only "$sha"
+          git merge --ff-only "$sha" || { echo "::error::Le depot du serveur a diverge de main (modification locale ?) : voir git status sur le serveur."; exit 1; }
           echo "Version deployee : $(git log -1 --format='%h %s')"
           ./deploy.sh "$@"
           REMOTE
