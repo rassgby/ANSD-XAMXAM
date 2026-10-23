@@ -38,7 +38,7 @@ from fastindex import doc_year, has_value, keywords, period_label, pub_date
 logger = logging.getLogger("ansd-agent")
 
 AGENT_ENABLED = os.environ.get("AGENT_ENABLED", "1").strip().lower() not in {"0", "false", "no", ""}
-AGENT_VERSION = "v8"  # dans la cle de cache des reponses : a changer quand le comportement de l'agent change
+AGENT_VERSION = "v9"  # dans la cle de cache des reponses : a changer quand le comportement de l'agent change
 # Fournisseur principal : Mistral (API directe). OpenRouter sert de secours (modele AGENT_MODEL).
 MISTRAL_BASE_URL = os.environ.get("MISTRAL_BASE_URL", "https://api.mistral.ai/v1").rstrip("/")
 # Version datee (et non « -latest ») : le comportement ne change pas a l'insu du projet.
@@ -49,6 +49,7 @@ MAX_STEPS = 4  # tours modele <-> outils avant de forcer une reponse
 MAX_SEARCHES = 4  # recherche anticipee comprise
 MAX_HISTORY_TURNS = 6
 PASSAGES_PER_SEARCH = 8
+NAMED_PUBLICATION_PASSAGES = 6  # recherche anticipee : passages de la publication nommee dans la question
 MAX_PER_DOCUMENT = 3
 PASSAGE_CHARS = 900
 MAX_SOURCES = 4
@@ -241,9 +242,9 @@ Ne cite que les passages réellement utilisés. N'écris jamais de titre de docu
 les sources s'affichent automatiquement sous ta réponse.
 
 STYLE
-- LANGUE : réponds TOUJOURS et entièrement en {language}, la langue choisie dans l'interface, même si la question, \
+- LANGUE : réponds TOUJOURS et entièrement en {language}, la langue de la question, même si \
 la conversation précédente ou les passages sont dans une autre langue (l'utilisateur peut changer de langue en cours \
-de discussion : la langue choisie l'emporte toujours). Ton direct et bienveillant ; vouvoie sauf si la personne te tutoie.
+de discussion : réponds toujours dans la langue de sa dernière question). Ton direct et bienveillant ; vouvoie sauf si la personne te tutoie.
 - Court par défaut (2 à 5 phrases) : l'essentiel d'abord (valeur, unité, période), puis un éclairage utile si les \
 passages le donnent. Plus long seulement si on te le demande. Respecte le format demandé (liste, tableau Markdown…).
 - Mise en forme autorisée : paragraphes, **gras**, listes (« - » ou « 1. ») et tableaux Markdown. Jamais de ligne de \
@@ -327,15 +328,21 @@ class _Run:
 
     async def prefetch(self, args: dict) -> str:
         """Recherche anticipee : la question telle quelle, plus (sans annee demandee) ses mots-cles sur
-        l'annee en cours — la question entiere attire les definitions, les mots-cles datés le dernier chiffre."""
-        plans = [(args["query"], args.get("year"), PASSAGES_PER_SEARCH)]
-        if not args.get("year"):
+        l'annee en cours — la question entiere attire les definitions, les mots-cles datés le dernier chiffre.
+        Publication nommee (« selon le RGPH-5 ») : en plus, la recherche limitee a cette publication, dont
+        les passages sont places en tete (d'autres publications reprennent ses chiffres : on les garde)."""
+        document = args.get("document")
+        plans = [(args["query"], args.get("year"), None, PASSAGES_PER_SEARCH - (2 if document else 0))]
+        if document:
+            plans.append((args["query"], args.get("year"), document, NAMED_PUBLICATION_PASSAGES))
+        elif not args.get("year"):
             phrase = fastindex.key_phrase(args["query"])
             if phrase:
-                plans.append((phrase, datetime.date.today().year, 3))
+                plans.append((phrase, datetime.date.today().year, None, 3))
         results = await asyncio.gather(
-            *[asyncio.to_thread(search_passages, q, y, None, True, k) for q, y, k in plans]
+            *[asyncio.to_thread(search_passages, q, y, d, True, k) for q, y, d, k in plans]
         )
+        named = rag._norm(document) if document else None
         hits, seen = [], set()
         for h in (h for batch in results for h in batch):
             key = (h["source"], h["page"], h["text"][:80])
@@ -344,9 +351,12 @@ class _Run:
                 hits.append(h)
         # Les plus recents d'abord : un modele leger retient surtout les premiers passages, et la question
         # sans periode demande la derniere valeur (ces passages sont deja tous pertinents).
-        hits.sort(key=lambda h: -fastindex.doc_order(h["source"], h.get("url")))
+        hits.sort(key=lambda h: (
+            not (named and f" {named} " in f" {rag._norm(h['source'])} "),
+            -fastindex.doc_order(h["source"], h.get("url")),
+        ))
         self.searches += 1
-        self.seen_searches.add(json.dumps([args["query"].strip().lower(), args.get("year"), None], default=str))
+        self.seen_searches.add(json.dumps([args["query"].strip().lower(), args.get("year"), document], default=str))
         result = (
             "(Passages classés du plus récent au plus ancien.)\n\n" + self.format_hits(hits)
             if hits else "Aucun passage trouve pour ce message."
@@ -389,6 +399,89 @@ class _Run:
 
 _YEAR_IN_TEXT = re.compile(r"(?<!\d)((?:19|20)\d{2})(?!\d)")
 
+# Questions en anglais : les publications sont en francais, et ni le plein texte ni l'embedding ne
+# rapprochent bien « unemployment rate … second quarter » de « taux de chômage … deuxième trimestre ».
+# La recherche anticipee se fait donc sur les termes statistiques traduits (expressions longues d'abord).
+_EN_FR_TERMS = {
+    "unemployment rate": "taux de chômage", "unemployment": "chômage", "unemployed": "chômeurs",
+    "employment rate": "taux d'emploi", "employment": "emploi", "labour force": "main-d'oeuvre",
+    "labor force": "main-d'oeuvre", "participation rate": "taux d'activité", "activity rate": "taux d'activité",
+    "inflation rate": "taux d'inflation", "consumer price index": "indice harmonisé des prix à la consommation",
+    "consumer prices": "prix à la consommation", "prices": "prix", "price": "prix",
+    "poverty rate": "taux de pauvreté", "poverty": "pauvreté", "poor": "pauvres",
+    "average household size": "taille moyenne des ménages", "household size": "taille des ménages",
+    "households": "ménages", "household": "ménage", "inhabitants": "habitants", "people": "habitants",
+    "census": "recensement", "dhs": "EDS", "demographic and health survey": "EDS",
+    "total fertility rate": "indice synthétique de fécondité", "fertility rate": "indice synthétique de fécondité",
+    "fertility": "fécondité", "life expectancy at birth": "espérance de vie à la naissance",
+    "life expectancy": "espérance de vie", "infant mortality": "mortalité infantile",
+    "child mortality": "mortalité infanto-juvénile", "maternal mortality": "mortalité maternelle",
+    "mortality": "mortalité", "contraceptive prevalence": "prévalence contraceptive", "vaccinated": "vaccinés",
+    "vaccination": "vaccination", "literacy rate": "taux d'alphabétisation", "literacy": "alphabétisation",
+    "school enrolment": "scolarisation", "school enrollment": "scolarisation", "disability": "handicap",
+    "electricity": "électricité", "drinking water": "eau potable", "access to": "accès à", "sex ratio": "rapport de masculinité",
+    "average age": "âge moyen", "median age": "âge médian", "urbanization": "urbanisation", "urban": "urbain",
+    "rural": "rural", "youth": "jeunes", "young people": "jeunes", "women": "femmes", "men": "hommes",
+    "gross domestic product": "produit intérieur brut PIB", "gdp": "PIB", "economic growth": "croissance économique",
+    "growth": "croissance", "exports": "exportations", "imports": "importations", "trade balance": "balance commerciale",
+    "turnover": "chiffre d'affaires", "industrial production": "production industrielle", "region": "région",
+    "first quarter": "premier trimestre", "second quarter": "deuxième trimestre", "third quarter": "troisième trimestre",
+    "fourth quarter": "quatrième trimestre", "quarter": "trimestre", "rate": "taux", "share": "proportion",
+    "percentage": "proportion", "proportion": "proportion", "number of": "nombre de", "population": "population",
+    "january": "janvier", "february": "février", "march": "mars", "april": "avril", "may": "mai", "june": "juin",
+    "july": "juillet", "august": "août", "september": "septembre", "october": "octobre", "november": "novembre",
+    "december": "décembre", "senegal": "Sénégal",
+}
+_EN_FR_RE = re.compile(r"\b(" + "|".join(re.escape(t) for t in sorted(_EN_FR_TERMS, key=len, reverse=True)) + r")\b", re.IGNORECASE)
+_EN_FILLER = {
+    "what", "which", "how", "many", "much", "was", "were", "is", "are", "the", "a", "an", "of", "in", "on", "at", "for",
+    "to", "by", "with", "according", "latest", "last", "recent", "most", "current", "currently", "did", "does", "do",
+    "has", "have", "had", "there", "and", "or", "its", "their", "per", "cent", "level", "give", "me", "tell", "please",
+    "can", "you", "show",
+}
+
+
+def looks_english(text: str) -> bool:
+    words = re.findall(r"[a-zàâçéèêëîïôûùüÿœ']+", text.lower())
+    en = sum(w in _ENGLISH_MARKERS or w in _EN_FILLER for w in words)
+    fr = sum(w in _FRENCH_MARKERS for w in words)
+    return en >= 2 and en > 2 * fr
+
+
+def french_query(question: str) -> str:
+    """Requete de recherche en francais pour une question en anglais : termes statistiques traduits,
+    mots-outils retires, le reste (lieux, sigles, annees) garde tel quel."""
+    out = []
+    for piece in _EN_FR_RE.split(question):
+        translated = _EN_FR_TERMS.get(piece.lower())
+        if translated:
+            out.append(translated)
+            continue
+        out.extend(w for w in re.findall(r"[\w'’-]+", piece) if w.lower() not in _EN_FILLER)
+    return " ".join(out)
+
+
+# Sigles qui designent un indicateur ou une institution, pas une publication.
+_NOT_PUBLICATIONS = {"ANSD", "PIB", "BIT", "ISF", "FCFA", "UEMOA", "CEDEAO", "TVA", "NEET", "IDE"}
+
+
+def named_publication(question: str) -> str | None:
+    """Sigle d'une publication nommee dans la question (« selon le RGPH-5 », « la derniere EDS »), s'il
+    figure dans le titre d'au moins un document : la recherche est alors limitee a cette publication."""
+    titles = None
+    for token in re.findall(r"(?<![\w-])[A-Z][A-Z0-9]{2,}(?:-[A-Z0-9]+)*(?![\w-])", question):
+        if token in _NOT_PUBLICATIONS:
+            continue
+        if titles is None:
+            try:
+                titles = [f" {rag._norm(t)} " for t in rag.known_sources()]
+            except Exception:
+                return None
+        wanted = f" {rag._norm(token)} "
+        if any(wanted in t for t in titles):
+            return token
+    return None
+
 
 def prefetch_args(question: str, history: list[dict]) -> dict | None:
     """Recherche a lancer avant le modele, ou None pour un message sans contenu a chercher
@@ -400,11 +493,16 @@ def prefetch_args(question: str, history: list[dict]) -> dict | None:
     query = question
     if history and len(words) <= 3:
         query = f"{history[-1].get('question', '')} {question}"
+    if looks_english(query):
+        query = french_query(query) or query
     this_year = datetime.date.today().year
     years = {int(y) for y in _YEAR_IN_TEXT.findall(question) if int(y) <= this_year}
     args: dict = {"query": query}
     if len(years) == 1:
         args["year"] = years.pop()
+    document = named_publication(query)
+    if document:
+        args["document"] = document
     return args
 
 
@@ -745,7 +843,7 @@ async def agent_events(
             messages.append({
                 "role": "user",
                 "content": (
-                    f"(Rappel système : la langue choisie dans l'interface est le {language_name}. Réécris toute ta "
+                    f"(Rappel système : la langue de la question est le {language_name}. Réécris toute ta "
                     f"réponse en {language_name}, avec les mêmes chiffres et les mêmes références [n], sans mentionner "
                     "ce rappel ni une correction.)"
                 ),

@@ -315,6 +315,31 @@ export function trackEvent(event: "details_open" | "listen", ctx?: UsageContext)
   }).catch(() => {});
 }
 
+export type FeedbackRating = "up" | "down";
+
+/** Avis de l'utilisateur sur une reponse (« utile / pas utile », commentaire facultatif),
+ * lu dans le tableau de bord admin. */
+export async function sendFeedback(
+  question: string,
+  answer: string,
+  language: Language,
+  rating: FeedbackRating,
+  comment?: string,
+  ctx?: UsageContext
+): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}/api/feedback`, {
+      method: "POST",
+      headers: jsonHeaders(ctx),
+      body: JSON.stringify({ question, answer, language, rating, comment: comment?.trim() || null }),
+    });
+  } catch {
+    throw new ApiError(GENERIC_ERROR_MESSAGE);
+  }
+  if (!res.ok) throw new ApiError(await readErrorDetail(res), res.status);
+}
+
 /** Titre court (1 a 3 mots) d'une discussion, genere par le backend pour
  * l'historique — ex. « Espérance de vie ». */
 /** Titre court de la discussion, dans la langue de l'interface (historique). */
@@ -342,8 +367,9 @@ export async function fetchSources(): Promise<SourceDocument[]> {
 /**
  * Speech-to-text: sends a browser mic recording (whatever container
  * MediaRecorder produced — webm/opus in Chrome/Firefox, mp4/aac in Safari;
- * the backend transcodes it, see backend/app/audio.py) to Soynade via
- * `/api/voice/transcribe` and returns the transcript. Used by /vocal.
+ * the backend transcodes it) to `/api/voice/transcribe` and returns the transcript.
+ * The backend detects the spoken language (French, English, wolof) on its own:
+ * `language` is only the interface language.
  */
 export async function transcribeAudio(recording: Blob, language: Language = "wo"): Promise<string> {
   const form = new FormData();

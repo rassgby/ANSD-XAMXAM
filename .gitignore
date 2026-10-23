@@ -4,6 +4,7 @@
 !/.gitattributes
 !/deploy.sh
 !/README.md
+!/.github/
 !/backend/
 !/frontend/
 
@@ -17,6 +18,7 @@
 .venv/
 venv/
 __pycache__/
+.pytest_cache/
 *.pyc
 
 # Node / Next
@@ -39,6 +41,8 @@ backend/local_models/*.safetensors
 *.onnx
 *.gguf
 *.log
+backend/eval/last_run.json
 
 .DS_Store
 .claude/
+backend/fastindex/

@@ -4,10 +4,15 @@ Base SQLite dans storage/ (volume Docker deja persistant). On enregistre,
 pour chaque question : date, texte, langue, mode (ecrit/vocal), reponse
 obtenue ou non, temps de reponse, tokens, publications citees. Les
 utilisateurs ne sont identifies que par un identifiant anonyme aleatoire
-genere par leur navigateur (aucun nom, e-mail ni adresse IP).
+genere par leur navigateur (aucun nom, e-mail ni adresse IP). Les avis
+(« utile / pas utile ») sont dans une table a part.
+
+Conservation limitee : tout ce qui a plus de ANALYTICS_RETENTION_DAYS jours
+(365 par defaut, 0 = sans limite) est supprime, une fois par jour.
 """
 
 import json
+import os
 import queue
 import sqlite3
 import threading
@@ -17,6 +22,8 @@ from datetime import datetime, timedelta, timezone
 from config import ROOT_DIR
 
 DB_PATH = ROOT_DIR / "storage" / "analytics.sqlite3"
+RETENTION_DAYS = int(os.environ.get("ANALYTICS_RETENTION_DAYS", "365"))
+PURGE_INTERVAL = 24 * 3600
 
 _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
@@ -58,6 +65,18 @@ def _db() -> sqlite3.Connection:
                 title TEXT NOT NULL,
                 ts REAL NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts REAL NOT NULL,
+                client_id TEXT,
+                session_id TEXT,
+                question TEXT NOT NULL,
+                answer TEXT NOT NULL,
+                language TEXT,
+                rating INTEGER NOT NULL,       -- 1 utile, -1 pas utile
+                comment TEXT
+            );
+            CREATE INDEX IF NOT EXISTS feedback_ts ON feedback(ts);
             """
         )
         # Bases creees avant l'ajout de la colonne `cached`.
@@ -78,8 +97,32 @@ _INSERT = """INSERT INTO events (ts, type, client_id, session_id, question, lang
    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
 
 
+def purge(retention_days: int | None = None) -> int:
+    """Supprime le journal, les titres et les avis plus anciens que la duree de conservation.
+    Renvoie le nombre de lignes supprimees."""
+    days = RETENTION_DAYS if retention_days is None else retention_days
+    if days <= 0:
+        return 0
+    cutoff = time.time() - days * 86400
+    deleted = 0
+    with _lock:
+        db = _db()
+        for table in ("events", "session_titles", "feedback"):
+            deleted += db.execute(f"DELETE FROM {table} WHERE ts < ?", (cutoff,)).rowcount
+        db.commit()
+    _stats_cache.clear()
+    return deleted
+
+
 def _writer() -> None:
+    last_purge = 0.0
     while True:
+        if time.time() - last_purge > PURGE_INTERVAL:
+            last_purge = time.time()
+            try:
+                purge()
+            except Exception:
+                pass
         batch = [_queue.get()]
         try:
             while len(batch) < 500:
@@ -148,6 +191,52 @@ def log_session_title(session_id: str | None, title: str) -> None:
             _db().commit()
     except Exception:
         pass
+
+
+def log_feedback(
+    *,
+    question: str,
+    answer: str,
+    rating: int,
+    language: str | None = None,
+    comment: str | None = None,
+    client_id: str | None = None,
+    session_id: str | None = None,
+) -> None:
+    """Avis sur une reponse. Un meme utilisateur qui change d'avis sur la meme reponse
+    remplace son avis precedent (pas de double comptage)."""
+    question, answer = _clip(question, 2000), _clip(answer, 8000)
+    with _lock:
+        db = _db()
+        if client_id:
+            db.execute(
+                "DELETE FROM feedback WHERE client_id = ? AND question = ? AND answer = ?",
+                (_clip(client_id, 64), question, answer),
+            )
+        db.execute(
+            """INSERT INTO feedback (ts, client_id, session_id, question, answer, language, rating, comment)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (time.time(), _clip(client_id, 64), _clip(session_id, 64), question, answer, language,
+             1 if rating > 0 else -1, _clip((comment or "").strip(), 1000) or None),
+        )
+        db.commit()
+    _stats_cache.clear()
+
+
+def recent_feedback(days: int | None, rating: int | None = None, limit: int = 25, offset: int = 0) -> dict:
+    where, params = "ts >= ?", [_since(days)]
+    if rating:
+        where += " AND rating = ?"
+        params.append(1 if rating > 0 else -1)
+    with _lock:
+        db = _db()
+        total = db.execute(f"SELECT COUNT(*) FROM feedback WHERE {where}", params).fetchone()[0]
+        rows = db.execute(
+            f"""SELECT ts, question, answer, language, rating, comment FROM feedback
+                WHERE {where} ORDER BY ts DESC LIMIT ? OFFSET ?""",
+            [*params, limit, offset],
+        ).fetchall()
+    return {"total": total, "items": [dict(r) for r in rows]}
 
 
 def _clip(value: str | None, size: int) -> str | None:
@@ -256,6 +345,9 @@ def _compute_stats(days: int | None) -> dict:
             ).fetchall()
             return [{"question": r["q"], "count": r["n"], "last_ts": r["last"]} for r in rows]
 
+        fb_up, fb_down = one(
+            "SELECT COALESCE(SUM(rating = 1), 0), COALESCE(SUM(rating = -1), 0) FROM feedback WHERE ts >= :since"
+        )
         top = top_questions("")
         unanswered = top_questions("AND answered = 0")
 
@@ -299,6 +391,9 @@ def _compute_stats(days: int | None) -> dict:
             "listens": interactions.get("listen", 0),
             "errors": errors,
             "error_rate": _pct(errors, all_queries),
+            "feedback_up": fb_up,
+            "feedback_down": fb_down,
+            "satisfaction_rate": _pct(fb_up, fb_up + fb_down) if fb_up + fb_down else None,
             "prompt_tokens": k["prompt_tokens"],
             "completion_tokens": k["completion_tokens"],
         },

@@ -40,6 +40,23 @@ services:
     restart: unless-stopped
 
   # Cache des reponses + limitation de debit, partages entre processus.
+  # Nouvelles publications de l'ANSD : catalogue mis a jour et nouveaux documents indexes chaque
+  # semaine (CORPUS_UPDATE_DAYS). Le backend reconstruit ensuite son index rapide de lui-meme.
+  corpus-updater:
+    build: .
+    container_name: ansd-corpus-updater
+    command: ["sh", "-c", "exec python update_corpus.py --every-days $${CORPUS_UPDATE_DAYS:-7}"]
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./data:/app/data
+      - ./storage:/app/storage
+      - fastembed-models:/models
+    depends_on:
+      - backend
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     container_name: ansd-redis

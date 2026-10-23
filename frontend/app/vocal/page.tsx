@@ -241,7 +241,6 @@ export default function VocalPage() {
           {(recordingUrl || question) && (
             <div className={styles.transcription}>
               {recordingUrl && (
-                // eslint-disable-next-line jsx-a11y/media-has-caption -- a user's own short voice note, not media content
                 <audio controls src={recordingUrl} className={styles.recordingPlayer} aria-label="Votre enregistrement" />
               )}
               {phase === "transcribing" && !question ? (

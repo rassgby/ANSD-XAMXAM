@@ -55,6 +55,22 @@ services:
       start_period: 60s
     restart: unless-stopped
 
+  # Nouvelles publications de l'ANSD : catalogue mis a jour et nouveaux documents indexes chaque
+  # semaine (CORPUS_UPDATE_DAYS). Le backend reconstruit ensuite son index rapide de lui-meme.
+  corpus-updater:
+    build: .
+    command: ["sh", "-c", "exec python update_corpus.py --every-days $${CORPUS_UPDATE_DAYS:-7}"]
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./data:/app/data
+      - ./storage:/app/storage
+      - fastembed-models:/models
+    depends_on:
+      - backend
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--maxmemory", "1gb", "--maxmemory-policy", "allkeys-lru", "--save", ""]

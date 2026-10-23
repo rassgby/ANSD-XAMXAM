@@ -74,15 +74,20 @@ function recognitionCtor(): (new () => BrowserRecognition) | null {
 /** Vrai si l'on peut poser une question a voix haute dans cette langue sur
  * ce navigateur. */
 export function isVoiceInputAvailable(language: VoiceLanguage): boolean {
-  // Wolof : pas de reconnaissance dans le navigateur ; on enregistre le micro et le
-  // backend transcrit (Soynade, /api/voice/transcribe).
-  if (BACKEND_ASR_LANGUAGES.includes(language)) {
-    return typeof MediaRecorder !== "undefined" && typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
-  }
+  // Francais, anglais, wolof : on enregistre le micro et le backend transcrit (/api/voice/transcribe).
+  if (BACKEND_ASR_LANGUAGES.includes(language) && canRecord()) return true;
   return !!recognitionCtor() && !!RECOGNITION_LANG[language];
 }
 
-const BACKEND_ASR_LANGUAGES: VoiceLanguage[] = ["wo"];
+// Transcription par le backend, qui detecte la langue parlee (francais, anglais, wolof) quelle que
+// soit celle de l'interface : on peut changer de langue en cours de discussion, a l'oral comme a
+// l'ecrit. La reconnaissance du navigateur, elle, est figee sur une langue : elle ne sert plus
+// qu'en secours, si l'enregistrement du micro n'est pas possible.
+const BACKEND_ASR_LANGUAGES: VoiceLanguage[] = ["wo", "fr", "en"];
+
+function canRecord(): boolean {
+  return typeof MediaRecorder !== "undefined" && typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
+}
 
 /** Message affiche quand la question a voix haute n'est pas possible (langue de l'interface). */
 export function voiceInputUnavailableMessage(): string {
@@ -187,7 +192,7 @@ export async function captureVoice(
 ): Promise<CaptureController | null> {
   const Ctor = recognitionCtor();
   const bcp47 = RECOGNITION_LANG[language];
-  if (Ctor && bcp47) {
+  if (Ctor && bcp47 && !(BACKEND_ASR_LANGUAGES.includes(language) && canRecord())) {
     // En parallele de la reconnaissance du navigateur, le micro est aussi enregistre pour que
     // l'utilisateur puisse reecouter sa question avant de l'envoyer (sans enregistrement possible,
     // la transcription marche quand meme).

@@ -1,34 +1,32 @@
 "use client";
 
-import { UiLangProvider, setUiLanguage, uiText, useUi, type UiKey } from "@/lib/i18n";
+import { UiLangProvider, setUiLanguage, uiText, type UiKey } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { BookOpen, Check, Copy, Info, Loader2, Pause, RotateCcw, Send, Trash2, Volume2, X } from "lucide-react";
+import { RotateCcw, Send, Trash2 } from "lucide-react";
 import { ChatHeader } from "@/components/chat/ChatHeader";
 import { LanguagePicker } from "@/components/chat/LanguagePicker";
 import { Composer } from "@/components/chat/Composer";
-import { SourceLinks } from "@/components/chat/SourceLinks";
-import { TypingIndicator } from "@/components/chat/TypingIndicator";
+import { RegenerateButton } from "@/components/chat/AnswerButtons";
+import { DetailsModal } from "@/components/chat/DetailsModal";
+import { TurnAnswer } from "@/components/chat/TurnAnswer";
 import { HeroTitle } from "@/components/chat/HeroTitle";
-import { RichText } from "@/components/chat/RichText";
 import { cn } from "@/lib/utils";
 import { useVisibleViewportHeight } from "@/lib/viewport";
-import { copyAnswer } from "@/lib/copy";
 import { SessionSidebar } from "@/components/chat/SessionSidebar";
 import { VoiceButton } from "@/components/chat/VoiceButton";
 import { LANG_TO_API, loadPreferredLang, newChatPrompt, savePreferredLang, welcome, type Lang } from "@/lib/languages";
 import {
   ApiError,
   askQuestionStream,
-  stripStreamMarkers,
   explainAnswer,
   trackEvent,
+  sendFeedback,
   sourcesOf,
   suggestTitle,
-  type DetailSource,
+  type FeedbackRating,
   type HistoryTurn,
   GENERIC_ERROR_MESSAGE,
-  type Citation,
   type Language,
   type QueryResponse,
 } from "@/lib/api";
@@ -96,7 +94,7 @@ export default function AccueilPage() {
   }, [sessions, activeId, hydrated]);
 
   const activeSession = sessions.find((s) => s.id === activeId) ?? null;
-  const turns = activeSession?.turns ?? [];
+  const turns = activeSession?.turns ?? NO_TURNS;
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -311,6 +309,21 @@ export default function AccueilPage() {
 
   /** « Relancer » : remet la question dans le champ de saisie, ou l'on peut
    * la completer avant de la reposer (Entree) — ou annuler (Echap). */
+  /** Avis « utile / pas utile » : envoye au tableau de bord admin, et garde avec la discussion. */
+  async function handleFeedback(turn: Turn, rating: FeedbackRating, comment?: string) {
+    if (!activeSession || !turn.response) return;
+    const sessionId = activeSession.id;
+    await sendFeedback(
+      turn.question,
+      turn.response.answer,
+      turn.response.language as Language,
+      rating,
+      comment,
+      { sessionId }
+    );
+    patchTurn(sessionId, turn.id, { feedback: rating });
+  }
+
   function handleRegenerate(turn: Turn) {
     if (!activeSession || isBusy || !turn.question) return;
     if (activeSession.mode === "voice") setSessionMode("text");
@@ -671,7 +684,6 @@ export default function AccueilPage() {
                               typically before the transcript (and always before the
                               answer) are back. Mic-originated turns only. */}
                           {turn.audioUrl && (
-                            // eslint-disable-next-line jsx-a11y/media-has-caption -- a user's own short voice note, not media content
                             <audio
                               controls
                               src={turn.audioUrl}
@@ -741,122 +753,18 @@ export default function AccueilPage() {
                         transition={{ delay: 0.08 }}
                         className="flex flex-col gap-4"
                       >
-                        {turn.status === "loading" &&
-                          (turn.streamText && stripStreamMarkers(turn.streamText).trim() ? (
-                            // Reponse en cours de reception : le texte s'affiche au fil de l'eau.
-                            <RichText
-                              text={stripStreamMarkers(turn.streamText)}
-                              className="font-serif text-[17px] leading-[1.7] text-slate-800"
-                            />
-                          ) : (
-                            <TypingIndicator />
-                          ))}
-
-                        {turn.status === "error" && (
-                          <div className="flex flex-col items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-                            <p>{turn.error === GENERIC_ERROR_MESSAGE ? t("genericError") : turn.error}</p>
-                            {turn.question && (
-                              <button
-                                type="button"
-                                onClick={() => handleRetry(turn)}
-                                disabled={isBusy}
-                                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-brand-700 transition-colors hover:border-brand-300 hover:bg-brand-50 disabled:opacity-50"
-                              >
-                                <RotateCcw size={13} />
-                                {t("askAgain")}
-                              </button>
-                            )}
-                          </div>
-                        )}
-
-                        {turn.status === "done" && turn.response?.kind === "chat" && (
-                          // Conversation courante (« Bonjour ! », « Avec plaisir ! ») : sans sources.
-                          <>
-                            <RichText text={turn.response.answer} className="font-serif text-[17px] leading-[1.7] text-slate-800" />
-                            <OriginalAnswer response={turn.response} />
-                          </>
-                        )}
-
-                        {turn.status === "done" && turn.response?.kind === "guide" && (
-                          // Conseils / etapes : chaque publication recommandee est un lien vers son document.
-                          <>
-                            <RichText
-                              text={turn.response.answer}
-                              sources={turn.response.sources}
-                              className="font-serif text-[17px] leading-[1.7] text-slate-800"
-                            />
-                            <div className="flex flex-wrap items-center gap-2">
-                              <CopyButton
-                                answer={turn.response.answer}
-                                citations={[]}
-                                inlineSources={turn.response.sources}
-                              />
-                            </div>
-                          </>
-                        )}
-
-                        {turn.status === "done" && turn.response && !turn.response.answered && turn.response.kind !== "chat" && turn.response.kind !== "guide" && (
-                          // Donnees non couvertes par les publications indexees : un message simple, rien d'autre.
-                          <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-[15px] leading-relaxed text-slate-600">
-                            <Info size={18} className="mt-0.5 shrink-0 text-slate-400" />
-                            <p>{turn.response.answer}</p>
-                          </div>
-                        )}
-
-                        {turn.status === "done" && turn.response?.answered && (
-                          <>
-                            <RichText
-                              text={turn.response.answer}
-                              className="font-serif text-[17px] leading-[1.7] text-slate-800"
-                            />
-                            <OriginalAnswer response={turn.response} />
-
-                            {/* Sources juste apres la reponse : un lien par page citee */}
-                            <SourceLinks citations={turn.response.citations} />
-
-                            {/* Barre d'actions, juste sous la reponse */}
-                            <div className="flex flex-wrap items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenDetails(turn)}
-                                aria-haspopup="dialog"
-                                className="inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700 transition-colors hover:border-brand-300 hover:bg-brand-100"
-                              >
-                                <BookOpen size={16} />
-                                {t("details")}
-                              </button>
-
-                              {/* « Réponse audio » : pour toutes les reponses, question ecrite ou vocale. */}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (speaking?.turnId !== turn.id) trackEvent("listen", { sessionId: activeSession?.id });
-                                  void handleListen(turn.id, turn.response!.answer, turn.response!.language as VoiceLanguage);
-                                }}
-                                aria-label={t("listenLabel")}
-                                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:border-brand-300 hover:text-brand-700"
-                              >
-                                {(() => {
-                                  const status = speaking?.turnId === turn.id ? speaking.status : null;
-                                  if (status === "loading") return <Loader2 size={16} className="animate-spin" />;
-                                  if (status === "playing") return <Pause size={16} />;
-                                  return <Volume2 size={16} />;
-                                })()}
-                                {(() => {
-                                  const status = speaking?.turnId === turn.id ? speaking.status : null;
-                                  if (status === "loading") return t("preparing");
-                                  if (status === "playing") return t("pause");
-                                  if (status === "paused") return t("resume");
-                                  return t("listen");
-                                })()}
-                              </button>
-
-                              <CopyButton answer={turn.response.answer} citations={turn.response.citations} />
-                            </div>
-
-
-                          </>
-                        )}
+                        <TurnAnswer
+                          turn={turn}
+                          isBusy={isBusy}
+                          speakingStatus={speaking?.turnId === turn.id ? speaking.status : null}
+                          onRetry={() => handleRetry(turn)}
+                          onOpenDetails={() => handleOpenDetails(turn)}
+                          onListen={() => {
+                            if (speaking?.turnId !== turn.id) trackEvent("listen", { sessionId: activeSession?.id });
+                            void handleListen(turn.id, turn.response!.answer, turn.response!.language as VoiceLanguage);
+                          }}
+                          onFeedback={(rating, comment) => handleFeedback(turn, rating, comment)}
+                        />
                       </motion.div>
                     </div>
                   ))}
@@ -943,192 +851,5 @@ export default function AccueilPage() {
   );
 }
 
-/** « Relancer » : obtenir une nouvelle reponse a la meme question (icone a
- * cote de la bulle de la question). */
-function RegenerateButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
-  const t = useUi();
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={t("regenerate")}
-      aria-label={t("regenerateLabel")}
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-40"
-    >
-      <RotateCcw size={15} />
-    </button>
-  );
-}
-
-/** « Copier » : copie la reponse (ou l'explication detaillee) dans le format
- * affiche (liste, tableau…), avec le lien vers ses sources. */
-function CopyButton({
-  answer,
-  citations,
-  inlineSources,
-  label,
-  small,
-}: {
-  answer: string;
-  citations: Citation[];
-  /** Sources citees dans le texte (references [[n]]) — explication detaillee. */
-  inlineSources?: DetailSource[];
-  label?: string;
-  small?: boolean;
-}) {
-  const t = useUi();
-  const [state, setState] = useState<"idle" | "copied" | "error">("idle");
-
-  async function copy() {
-    try {
-      await copyAnswer(answer, citations, inlineSources);
-      setState("copied");
-    } catch {
-      setState("error");
-    }
-    setTimeout(() => setState("idle"), 2000);
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={copy}
-      aria-label={label ?? t("copyAnswer")}
-      className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border font-semibold transition-colors",
-        small ? "px-3 py-1.5 text-xs" : "px-4 py-2 text-sm",
-        state === "copied"
-          ? "border-brand-300 bg-brand-50 text-brand-700"
-          : "border-slate-200 bg-white text-slate-600 hover:border-brand-300 hover:text-brand-700"
-      )}
-    >
-      {state === "copied" ? <Check size={small ? 14 : 16} /> : <Copy size={small ? 14 : 16} />}
-      <span aria-live="polite">{state === "copied" ? t("copied") : state === "error" ? t("copyFailed") : label ?? t("copy")}</span>
-    </button>
-  );
-}
-
-/** Fenetre « Voir plus » : explication detaillee de la reponse, centree. Fermeture
- * par la croix, Echap ou un clic en dehors. */
-function DetailsModal({
-  details,
-  detailsSources,
-  loading,
-  error,
-  citations,
-  onRetry,
-  onClose,
-}: {
-  details?: string;
-  detailsSources?: DetailSource[];
-  loading: boolean;
-  error?: string;
-  citations: Citation[];
-  onRetry: () => void;
-  onClose: () => void;
-}) {
-  const t = useUi();
-  const closeRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  // Les sources sont dans le texte (liens apres chaque passage). Une ancienne
-  // explication, sans ces liens, est regeneree a l'ouverture : en attendant on
-  // affiche le chargement plutot que l'ancien texte.
-  const ready = !!details && (detailsSources !== undefined || (!loading && !!error));
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8">
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"
-      />
-      <motion.div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="details-title"
-        initial={{ opacity: 0, y: 16, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 16, scale: 0.98 }}
-        transition={{ type: "spring", duration: 0.35, bounce: 0.1 }}
-        className="relative flex max-h-[80vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
-      >
-        <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-3.5 sm:px-6">
-          <h2 id="details-title" className="text-base font-bold text-brand-900">
-            {t("details")}
-          </h2>
-          <button
-            ref={closeRef}
-            type="button"
-            onClick={onClose}
-            aria-label={t("close")}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 font-serif text-[16px] leading-relaxed text-slate-800 sm:px-6">
-          {ready ? (
-            <RichText text={details!} sources={detailsSources} />
-          ) : error && !loading ? (
-            <div className="flex flex-wrap items-center gap-3 font-sans text-sm text-slate-500">
-              {error}
-              <button
-                type="button"
-                onClick={onRetry}
-                className="inline-flex items-center gap-1 font-semibold text-brand-700 hover:text-brand-900"
-              >
-                <RotateCcw size={13} />
-                {t("retry")}
-              </button>
-            </div>
-          ) : (
-            <div className="flex animate-pulse flex-col gap-3 py-1" aria-label="Chargement de l'explication">
-              <div className="h-3.5 w-11/12 rounded-full bg-brand-100" />
-              <div className="h-3.5 w-full rounded-full bg-brand-100" />
-              <div className="h-3.5 w-4/5 rounded-full bg-brand-100" />
-              <div className="h-3.5 w-2/3 rounded-full bg-brand-100" />
-            </div>
-          )}
-        </div>
-
-        {ready && (
-          <div className="flex justify-end border-t border-slate-100 bg-slate-50/60 px-5 py-3 sm:px-6">
-            <CopyButton
-              answer={details!}
-              citations={detailsSources ? [] : citations}
-              inlineSources={detailsSources}
-              label={t("copyDetails")}
-              small
-            />
-          </div>
-        )}
-      </motion.div>
-    </div>
-  );
-}
-
-/** Reponse traduite automatiquement en wolof : le texte francais d'origine, a deplier.
- * Pas pour le pulaar : la reponse s'affiche seule (choix de presentation). */
-function OriginalAnswer({ response }: { response: QueryResponse }) {
-  const t = useUi();
-  if (!response.original_answer || response.language === "ff") return null;
-  return (
-    <details className="group text-sm text-slate-500">
-      <summary className="cursor-pointer select-none font-medium text-brand-700 hover:text-brand-900">
-        {t("originalFrench")}
-      </summary>
-      <RichText text={response.original_answer} className="mt-2 font-serif text-[15px] leading-[1.7] text-slate-600" />
-    </details>
-  );
-}
+/** Discussion vide : meme tableau a chaque rendu (sinon l'effet de defilement se relancerait sans fin). */
+const NO_TURNS: Turn[] = [];

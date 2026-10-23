@@ -22,6 +22,10 @@ export interface AdminKpis {
   listens: number;
   errors: number;
   error_rate: number;
+  /** Avis « utile » / « pas utile » ; satisfaction en %, null sans avis. */
+  feedback_up: number;
+  feedback_down: number;
+  satisfaction_rate: number | null;
   prompt_tokens: number;
   completion_tokens: number;
 }
@@ -110,4 +114,25 @@ export function fetchAdminQuestions(
   limit = 20
 ): Promise<{ total: number; items: LoggedQuestion[] }> {
   return adminGet(`/api/admin/questions?days=${days}&status=${status}&offset=${offset}&limit=${limit}`, token);
+}
+
+export type FeedbackFilter = "all" | "up" | "down";
+
+export interface LoggedFeedback {
+  ts: number;
+  question: string;
+  answer: string;
+  language: string | null;
+  rating: 1 | -1;
+  comment: string | null;
+}
+
+export function fetchAdminFeedback(
+  token: string,
+  days: number,
+  rating: FeedbackFilter,
+  offset: number,
+  limit = 20
+): Promise<{ total: number; items: LoggedFeedback[] }> {
+  return adminGet(`/api/admin/feedback?days=${days}&rating=${rating}&offset=${offset}&limit=${limit}`, token);
 }

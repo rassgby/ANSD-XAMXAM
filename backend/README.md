@@ -69,15 +69,38 @@ python ingest.py
 
 Ajoute `--reset` pour repartir de zero si tu relances une indexation.
 
+Mise a jour ensuite (nouvelles publications seulement, sans rien retirer du catalogue) :
+
+```bash
+python update_corpus.py                  # une fois : scraper.py --update puis ingest.py
+python update_corpus.py --every-days 7   # en boucle (service Docker corpus-updater)
+```
+
+Le backend en marche reconstruit son index de recherche rapide de lui-meme (verification toutes
+les 10 minutes). Attention : `scraper.py` sans `--update` reecrit tout le catalogue.
+
 3. Interroger le systeme :
 
 ```bash
 # en ligne de commande
 python rag.py "Quel est le taux de scolarisation au Senegal ?"
-
-# ou via l'interface web
-streamlit run app.py
 ```
+
+L'interface web est le frontend Next.js (`../frontend`), qui interroge l'API (`uvicorn api:app`).
+
+## Tests et questions de reference
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest -q            # tests sans reseau ni base (aussi lances par GitHub Actions)
+python eval/run_eval.py        # questions de reference, sur l'API demarree (voir eval/run_eval.py)
+python eval/run_eval.py --fresh  # idem sans le cache des reponses
+```
+
+`eval/reference.json` : questions dont la reponse a ete verifiee dans les publications (valeur
+attendue, publication a citer). Les erreurs connues y sont marquees `known_issue` : elles ne font
+pas echouer la verification, qui signale quand elles sont corrigees. A relancer apres chaque
+changement du prompt, du decoupage, de la recherche ou du modele.
 
 ## Structure
 
@@ -87,7 +110,16 @@ ansd-rag/
   scraper.py      catalogue les PDF depuis ansd.sn/toutes-les-publications (titre + URL)
   ingest.py       fetch en memoire + extraction texte + decoupage + embeddings + indexation Chroma
   rag.py          recuperation vectorielle + generation via OpenRouter
-  app.py          interface chatbot Streamlit
+  conversation.py messages traites sans modele (salutations, mises en forme, relances de periode)
+  api.py          API FastAPI : questions, explications, titres
+  schemas.py      formes des requetes et reponses de l'API
+  limits.py       limitation de debit
+  routes_admin.py journal d'utilisation, avis des utilisateurs, tableau de bord admin
+  routes_voice.py transcription et lecture audio
+  analytics.py    journal d'utilisation et avis (SQLite, conservation ANALYTICS_RETENTION_DAYS)
+  update_corpus.py  mise a jour du corpus (nouvelles publications)
+  eval/           questions de reference
+  tests/          tests automatiques
   data/manifest.csv  catalogue des documents references (titre, url, taille)
   storage/chroma/ base vectorielle persistante (texte + embeddings, pas les PDF)
 ```

@@ -22,17 +22,21 @@ import {
   RefreshCw,
   ScrollText,
   SearchX,
+  ThumbsDown,
+  ThumbsUp,
   X,
   type LucideIcon,
 } from "lucide-react";
 import { ColumnChart, fmt, Meter, RankedBars } from "@/components/admin/charts";
 import { ApiError, GENERIC_ERROR_MESSAGE } from "@/lib/api";
 import {
+  fetchAdminFeedback,
   fetchAdminQuestions,
   fetchAdminStats,
   loadAdminToken,
   saveAdminToken,
   type AdminStats,
+  type FeedbackFilter,
   type LoggedQuestion,
   type QuestionStatus,
 } from "@/lib/admin";
@@ -59,6 +63,12 @@ const STATUS_TABS: { value: QuestionStatus; label: string }[] = [
   { value: "answered", label: "Répondues" },
   { value: "no_data", label: "Sans données" },
   { value: "error", label: "Erreurs" },
+];
+
+const FEEDBACK_TABS: { value: FeedbackFilter; label: string }[] = [
+  { value: "down", label: "Pas utiles" },
+  { value: "up", label: "Utiles" },
+  { value: "all", label: "Tous" },
 ];
 
 const PAGE_SIZE = 20;
@@ -88,14 +98,16 @@ export default function AdminPage() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    // sessionStorage n'existe que dans le navigateur : lu apres l'hydratation, pas pendant le rendu serveur.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setToken(loadAdminToken());
     setReady(true);
   }, []);
 
-  function logout() {
+  const logout = useCallback(() => {
     saveAdminToken(null);
     setToken(null);
-  }
+  }, []);
 
   if (!ready) return null;
   return token ? (
@@ -178,7 +190,7 @@ function Login({ onSuccess }: { onSuccess: (token: string) => void }) {
 
 // ------------------------------------------------------------------ tableau de bord
 
-type SectionId = "overview" | "activity" | "usage" | "content" | "gaps" | "log" | "performance";
+type SectionId = "overview" | "activity" | "usage" | "content" | "gaps" | "feedback" | "log" | "performance";
 
 const SECTIONS: { id: SectionId; hash: string; label: string; icon: LucideIcon; description: string }[] = [
   { id: "overview", hash: "vue-ensemble", label: "Vue d'ensemble", icon: LayoutDashboard, description: "Les chiffres clés de l'assistant" },
@@ -186,15 +198,48 @@ const SECTIONS: { id: SectionId; hash: string; label: string; icon: LucideIcon; 
   { id: "usage", hash: "langues-usages", label: "Langues & usages", icon: Languages, description: "Langues, écrit ou vocal, interactions avec les réponses" },
   { id: "content", hash: "sujets-sources", label: "Sujets & sources", icon: BookOpen, description: "Ce qui est demandé et les publications qui y répondent" },
   { id: "gaps", hash: "sans-donnees", label: "Demandes sans données", icon: SearchX, description: "Questions que le corpus ne couvre pas encore — à prioriser pour l'enrichir" },
+  { id: "feedback", hash: "avis", label: "Avis des utilisateurs", icon: ThumbsUp, description: "Réponses jugées utiles ou non, avec les commentaires — pour repérer ce qui est mal traité" },
   { id: "log", hash: "journal", label: "Journal des questions", icon: ScrollText, description: "Toutes les questions, les plus récentes en premier" },
   { id: "performance", hash: "performance", label: "Performance & coûts", icon: Gauge, description: "Rapidité, fiabilité et consommation du modèle" },
 ];
 
+/** Chargement d'une ressource du tableau de bord. Relance a chaque changement de `load` (parametres)
+ * ou par `reload()` ; pendant un rechargement, les donnees precedentes restent affichees. */
+function useAdminRequest<T>(load: () => Promise<T>, onUnauthorized: () => void) {
+  const [tick, setTick] = useState(0);
+  const [result, setResult] = useState<{ load: () => Promise<T>; tick: number; data: T | null; error: string | null } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    load().then(
+      (data) => {
+        if (!cancelled) setResult({ load, tick, data, error: null });
+      },
+      (err) => {
+        if (err instanceof ApiError && err.status === 401) return onUnauthorized();
+        if (!cancelled)
+          setResult((prev) => ({
+            load,
+            tick,
+            data: prev?.data ?? null,
+            error: err instanceof ApiError ? err.message : GENERIC_ERROR_MESSAGE,
+          }));
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [load, tick, onUnauthorized]);
+
+  const loading = !result || result.load !== load || result.tick !== tick;
+  const reload = useCallback(() => setTick((t) => t + 1), []);
+  return { data: result?.data ?? null, error: loading ? null : result.error, loading, reload };
+}
+
 function Dashboard({ token, onLogout }: { token: string; onLogout: () => void }) {
   const [days, setDays] = useState(30);
-  const [stats, setStats] = useState<AdminStats | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const fetchStats = useCallback(() => fetchAdminStats(token, days), [token, days]);
+  const { data: stats, loading, error, reload } = useAdminRequest<AdminStats>(fetchStats, onLogout);
   const [section, setSection] = useState<SectionId>("overview");
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -218,22 +263,6 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
     window.scrollTo({ top: 0 });
   }
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setStats(await fetchAdminStats(token, days));
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) return onLogout();
-      setError(err instanceof ApiError ? err.message : GENERIC_ERROR_MESSAGE);
-    } finally {
-      setLoading(false);
-    }
-  }, [token, days, onLogout]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   const current = SECTIONS.find((s) => s.id === section)!;
   const nav = (
@@ -312,7 +341,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
               </div>
               <button
                 type="button"
-                onClick={() => void load()}
+                onClick={reload}
                 aria-label="Actualiser"
                 title={
                   stats
@@ -596,8 +625,27 @@ function SectionContent({
         </>
       );
 
+    case "feedback":
+      return (
+        <>
+          <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
+            <Stat
+              className="col-span-2 lg:col-span-1"
+              label="Satisfaction"
+              value={k.satisfaction_rate === null ? "—" : `${k.satisfaction_rate.toLocaleString("fr-FR")} %`}
+              hint="part des avis « utile »"
+            >
+              {k.satisfaction_rate !== null && <Meter value={k.satisfaction_rate} label="Part des avis positifs" />}
+            </Stat>
+            <Stat label="Réponses utiles" value={fmt.format(k.feedback_up)} hint={periodText.toLowerCase()} />
+            <Stat label="Réponses pas utiles" value={fmt.format(k.feedback_down)} hint={periodText.toLowerCase()} alert={k.feedback_down > 0} />
+          </section>
+          <FeedbackLog key={days} token={token} days={days} onUnauthorized={onLogout} />
+        </>
+      );
+
     case "log":
-      return <QuestionLog token={token} days={days} onUnauthorized={onLogout} />;
+      return <QuestionLog key={days} token={token} days={days} onUnauthorized={onLogout} />;
 
     case "performance":
       return (
@@ -711,22 +759,11 @@ function QuestionRanking({ items, empty = "Aucune question sur la période." }: 
 function QuestionLog({ token, days, onUnauthorized }: { token: string; days: number; onUnauthorized: () => void }) {
   const [status, setStatus] = useState<QuestionStatus>("all");
   const [page, setPage] = useState(0);
-  const [data, setData] = useState<{ total: number; items: LoggedQuestion[] } | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => setPage(0), [status, days]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    fetchAdminQuestions(token, days, status, page * PAGE_SIZE, PAGE_SIZE)
-      .then((d) => !cancelled && setData(d))
-      .catch((err) => err instanceof ApiError && err.status === 401 && onUnauthorized())
-      .finally(() => !cancelled && setLoading(false));
-    return () => {
-      cancelled = true;
-    };
-  }, [token, days, status, page, onUnauthorized]);
+  const fetchPage = useCallback(
+    () => fetchAdminQuestions(token, days, status, page * PAGE_SIZE, PAGE_SIZE),
+    [token, days, status, page]
+  );
+  const { data, loading } = useAdminRequest(fetchPage, onUnauthorized);
 
   const pages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
 
@@ -741,7 +778,10 @@ function QuestionLog({ token, days, onUnauthorized }: { token: string; days: num
             <button
               key={t.value}
               type="button"
-              onClick={() => setStatus(t.value)}
+              onClick={() => {
+                setStatus(t.value);
+                setPage(0);
+              }}
               aria-pressed={status === t.value}
               className={cn(
                 "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
@@ -788,6 +828,101 @@ function QuestionLog({ token, days, onUnauthorized }: { token: string; days: num
         </table>
         {data && data.items.length === 0 && <p className="py-8 text-center text-sm text-slate-400">Aucune question.</p>}
       </div>
+
+      {data && data.total > PAGE_SIZE && (
+        <div className="mt-4 flex items-center justify-between text-sm text-slate-500">
+          <span>
+            {fmt.format(page * PAGE_SIZE + 1)}–{fmt.format(Math.min(data.total, (page + 1) * PAGE_SIZE))} sur{" "}
+            {fmt.format(data.total)}
+          </span>
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              disabled={page === 0}
+              onClick={() => setPage((p) => p - 1)}
+              aria-label="Page précédente"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 disabled:opacity-40"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <button
+              type="button"
+              disabled={page + 1 >= pages}
+              onClick={() => setPage((p) => p + 1)}
+              aria-label="Page suivante"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 disabled:opacity-40"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function FeedbackLog({ token, days, onUnauthorized }: { token: string; days: number; onUnauthorized: () => void }) {
+  const [rating, setRating] = useState<FeedbackFilter>("down");
+  const [page, setPage] = useState(0);
+  const fetchPage = useCallback(
+    () => fetchAdminFeedback(token, days, rating, page * PAGE_SIZE, PAGE_SIZE),
+    [token, days, rating, page]
+  );
+  const { data, loading } = useAdminRequest(fetchPage, onUnauthorized);
+
+  const pages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
+
+  return (
+    <Card>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-slate-500">{data ? `${fmt.format(data.total)} avis` : "\u00a0"}</p>
+        <div className="flex flex-wrap gap-1.5">
+          {FEEDBACK_TABS.map((t) => (
+            <button
+              key={t.value}
+              type="button"
+              onClick={() => {
+                setRating(t.value);
+                setPage(0);
+              }}
+              aria-pressed={rating === t.value}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
+                rating === t.value ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <ul className={cn("flex flex-col divide-y divide-slate-100 transition-opacity", loading && "opacity-60")}>
+        {data?.items.map((f, i) => (
+          <li key={`${f.ts}-${i}`} className="flex flex-col gap-1.5 py-3 text-sm">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              {f.rating === 1 ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 font-semibold text-brand-700">
+                  <ThumbsUp size={12} /> Utile
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-800">
+                  <ThumbsDown size={12} /> Pas utile
+                </span>
+              )}
+              <span>{dateTimeFmt.format(new Date(f.ts * 1000))}</span>
+              {f.language && <span>· {LANGUAGE_NAMES[f.language] ?? f.language}</span>}
+            </div>
+            <p className="font-medium text-slate-900">{f.question}</p>
+            {f.comment && <p className="rounded-lg bg-slate-50 px-3 py-2 text-slate-700">« {f.comment} »</p>}
+            <details>
+              <summary className="cursor-pointer text-xs font-semibold text-brand-600 hover:text-brand-800">Voir la réponse donnée</summary>
+              <p className="mt-2 whitespace-pre-line text-slate-600">{f.answer}</p>
+            </details>
+          </li>
+        ))}
+      </ul>
+      {data && data.items.length === 0 && <p className="py-8 text-center text-sm text-slate-400">Aucun avis.</p>}
 
       {data && data.total > PAGE_SIZE && (
         <div className="mt-4 flex items-center justify-between text-sm text-slate-500">

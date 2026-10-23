@@ -95,6 +95,49 @@ def build_catalog(max_docs: int, category: str | None, doc_type: str | None, del
     return manifest
 
 
+def read_catalog() -> list[dict]:
+    if not MANIFEST_PATH.exists():
+        return []
+    with open(MANIFEST_PATH, newline="", encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+
+def update_catalog(max_pages: int = 30, stop_after: int = 2, delay: float = 0.3) -> list[dict]:
+    """Ajoute au catalogue existant les publications PDF qu'il n'a pas encore, sans rien en retirer.
+    Le site liste les plus recentes d'abord : on s'arrete apres `stop_after` pages sans nouveaute.
+    Renvoie les publications ajoutees (en tete du catalogue)."""
+    existing = read_catalog()
+    known = {row["url"] for row in existing}
+    session = requests.Session()
+    session.headers.update(HEADERS)
+    new: list[dict] = []
+    pages_without_new = 0
+    for page in range(max_pages):
+        soup = fetch_page(session, page, None, None)
+        rows = parse_rows(soup)
+        if not rows:
+            break
+        added = [r for r in rows if r["extension"] == "pdf" and r["url"] not in known]
+        for row in added:
+            known.add(row["url"])
+            new.append(row)
+            print(f"[nouveau] {row['title']}")
+        pages_without_new = 0 if added else pages_without_new + 1
+        if pages_without_new >= stop_after or not has_next_page(soup):
+            break
+        time.sleep(delay)
+    if new:
+        MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = MANIFEST_PATH.with_suffix(".csv.tmp")
+        with open(tmp, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=["title", "extension", "size", "url"])
+            writer.writeheader()
+            writer.writerows(new + existing)
+        tmp.replace(MANIFEST_PATH)  # jamais de catalogue a moitie ecrit (le backend le lit)
+    print(f"{len(new)} nouvelle(s) publication(s) ; catalogue : {len(existing) + len(new)} documents")
+    return new
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Catalogue les publications PDF de l'ANSD (titre + URL, sans telechargement)"
@@ -103,7 +146,15 @@ if __name__ == "__main__":
     parser.add_argument("--category", choices=list(CATEGORIES), default=None)
     parser.add_argument("--type", dest="doc_type", choices=list(DOC_TYPES), default=None)
     parser.add_argument("--delay", type=float, default=0.3, help="Delai (s) entre deux pages du catalogue")
+    parser.add_argument(
+        "--update", action="store_true",
+        help="Ajoute seulement les nouvelles publications au catalogue existant (sans le reecrire)",
+    )
     args = parser.parse_args()
+
+    if args.update:
+        update_catalog(delay=args.delay)
+        raise SystemExit(0)
 
     build_catalog(
         max_docs=args.max_docs,

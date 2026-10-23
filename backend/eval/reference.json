@@ -1,0 +1,240 @@
+[
+ {
+  "id": "population-rgph5",
+  "question": "Quelle est la population du Sénégal selon le RGPH-5 ?",
+  "language": "fr",
+  "expected": [
+   "18 126 390"
+  ]
+ },
+ {
+  "id": "population-dakar",
+  "question": "Combien d'habitants compte la région de Dakar selon le dernier recensement ?",
+  "language": "fr",
+  "expected": [
+   "4 004 426"
+  ],
+  "source": "RGPH-5"
+ },
+ {
+  "id": "population-thies",
+  "question": "Quelle est la population de la région de Thiès au RGPH-5 ?",
+  "language": "fr",
+  "expected": [
+   "2 587 092"
+  ]
+ },
+ {
+  "id": "menages-nombre",
+  "question": "Combien de ménages compte le Sénégal selon le RGPH-5 ?",
+  "language": "fr",
+  "expected": [
+   "2 059 855"
+  ],
+  "source": "RGPH-5"
+ },
+ {
+  "id": "menages-taille",
+  "question": "Quelle est la taille moyenne des ménages au Sénégal au RGPH-5 ?",
+  "language": "fr",
+  "expected": [
+   "9"
+  ],
+  "source": "RGPH-5"
+ },
+ {
+  "id": "urbanisation",
+  "question": "Quelle part de la population sénégalaise vit en milieu urbain selon le RGPH-5 ?",
+  "language": "fr",
+  "expected": [
+   "55,1"
+  ]
+ },
+ {
+  "id": "age-moyen",
+  "question": "Quel est l'âge moyen de la population sénégalaise au RGPH-5 ?",
+  "language": "fr",
+  "expected": [
+   "23,6"
+  ],
+  "source": "RGPH-5"
+ },
+ {
+  "id": "masculinite",
+  "question": "Quel est le rapport de masculinité au Sénégal selon le RGPH-5 ?",
+  "language": "fr",
+  "expected": [
+   "102,6"
+  ],
+  "source": "RGPH-5"
+ },
+ {
+  "id": "alphabetisation",
+  "question": "Quel est le taux d'alphabétisation au Sénégal selon le RGPH-5 ?",
+  "language": "fr",
+  "expected": [
+   "63,1"
+  ],
+  "source": "RGPH-5"
+ },
+ {
+  "id": "handicap",
+  "question": "Quelle est la prévalence du handicap au Sénégal selon le RGPH-5 ?",
+  "language": "fr",
+  "expected": [
+   "7,3"
+  ],
+  "source": "RGPH-5"
+ },
+ {
+  "id": "chomage-t2-2026",
+  "question": "Quel est le taux de chômage au Sénégal au deuxième trimestre 2026 ?",
+  "language": "fr",
+  "expected": [
+   "19,1"
+  ],
+  "source": "ENES, T2-2026"
+ },
+ {
+  "id": "chomage-jeunes",
+  "question": "Quel est le taux de chômage des jeunes au Sénégal selon la dernière ENES ?",
+  "language": "fr",
+  "expected": [
+   "23,5"
+  ],
+  "source": "ENES, T2-2026"
+ },
+ {
+  "id": "pib-t2-2026",
+  "question": "Quelle est la croissance du PIB réel au deuxième trimestre 2026 par rapport au deuxième trimestre 2025 ?",
+  "language": "fr",
+  "expected": [
+   "6,1"
+  ],
+  "source": "Comptes trim. T2 2026"
+ },
+ {
+  "id": "pauvrete",
+  "question": "Quel est le taux de pauvreté au Sénégal selon l'EHCVM 2021-2022 ?",
+  "language": "fr",
+  "expected": [
+   "37,5"
+  ],
+  "source": "Enquête harmonisée"
+ },
+ {
+  "id": "mortalite-infantile",
+  "question": "Quel est le taux de mortalité infantile selon l'EDS 2023 ?",
+  "language": "fr",
+  "expected": [
+   "31"
+  ],
+  "source": "EDS-Continue 2023"
+ },
+ {
+  "id": "contraception",
+  "question": "Quelle est la prévalence contraceptive moderne chez les femmes en union selon l'EDS 2023 ?",
+  "language": "fr",
+  "expected": [
+   "26"
+  ],
+  "source": "EDS-Continue 2023"
+ },
+ {
+  "id": "vaccination",
+  "question": "Quelle proportion d'enfants de 12-23 mois a reçu tous les vaccins de base selon l'EDS 2023 ?",
+  "language": "fr",
+  "expected": [
+   "64"
+  ],
+  "source": "EDS-Continue 2023"
+ },
+ {
+  "id": "en-population",
+  "question": "What is the population of Senegal according to the 2023 census?",
+  "language": "en",
+  "expected": [
+   "18 126 390"
+  ]
+ },
+ {
+  "id": "en-fertility",
+  "question": "What is the total fertility rate in Senegal according to the 2023 DHS?",
+  "language": "en",
+  "expected": [
+   "4.0"
+  ],
+  "source": "EDS-Continue 2023"
+ },
+ {
+  "id": "wo-population",
+  "question": "Ñaata nit ñoo nekk ci Senegaal ci RGPH-5 bi?",
+  "language": "wo",
+  "expected": [
+   "18 126 390"
+  ]
+ },
+ {
+  "id": "wo-chomage",
+  "question": "Ñaata la taux chômage bi ci Senegaal ci ñaareelu trimestre 2026?",
+  "language": "wo",
+  "expected": [
+   "19,1"
+  ],
+  "source": "ENES, T2-2026"
+ },
+ {
+  "id": "switch-fr-question-en-ui",
+  "question": "Quelle est la population du Sénégal selon le RGPH-5 ?",
+  "language": "en",
+  "answer_language": "fr",
+  "expected": [
+   "18 126 390"
+  ]
+ },
+ {
+  "id": "switch-en-question-fr-ui",
+  "question": "What is the population of Senegal according to the 2023 census?",
+  "language": "fr",
+  "answer_language": "en",
+  "expected": [
+   "18 126 390"
+  ]
+ },
+ {
+  "id": "esperance-vie",
+  "question": "Quelle est l'espérance de vie à la naissance au Sénégal selon le RGPH-5 ?",
+  "language": "fr",
+  "expected": [
+   "68,9"
+  ],
+  "source": "RGPH-5"
+ },
+ {
+  "id": "fecondite",
+  "question": "Quel est l'indice synthétique de fécondité au Sénégal selon la dernière EDS ?",
+  "language": "fr",
+  "expected": [
+   "4,0"
+  ],
+  "source": "EDS-Continue 2023"
+ },
+ {
+  "id": "en-unemployment",
+  "question": "What was the unemployment rate in Senegal in the second quarter of 2026?",
+  "language": "en",
+  "expected": [
+   "19.1"
+  ],
+  "source": "ENES, T2-2026"
+ },
+ {
+  "id": "electricite",
+  "question": "Quelle proportion des ménages a accès à l'électricité selon le RGPH-5 ?",
+  "language": "fr",
+  "expected": [
+   "74,4"
+  ],
+  "source": "RGPH-5"
+ }
+]

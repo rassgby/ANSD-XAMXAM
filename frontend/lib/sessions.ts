@@ -40,6 +40,8 @@ export interface Turn {
   /** Vrai si la reponse a ete interrompue (page quittee pendant l'attente) :
    * l'interface propose alors de reposer la question. */
   interrupted?: boolean;
+  /** Avis donne sur la reponse (« utile / pas utile »). */
+  feedback?: "up" | "down";
 }
 
 export interface ChatSession {

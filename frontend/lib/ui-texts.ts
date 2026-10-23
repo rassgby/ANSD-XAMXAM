@@ -72,6 +72,12 @@ const FR = {
   noSound: "Aucun son enregistré — réessayez.",
   playbackUnavailable: "La lecture audio n'est pas encore disponible dans cette langue.",
   audioUnavailablePulaar: "L'audio n'est pas encore disponible en pulaar.",
+  feedbackUp: "Réponse utile",
+  feedbackDown: "Réponse pas utile",
+  feedbackThanks: "Merci pour votre avis.",
+  feedbackCommentPlaceholder: "Qu'est-ce qui n'allait pas ? (facultatif)",
+  feedbackSend: "Envoyer",
+  feedbackError: "Votre avis n'a pas pu être envoyé. Réessayez.",
 };
 
 export type UiKey = keyof typeof FR;
@@ -144,6 +150,12 @@ const EN: UiTexts = {
   noSound: "Nothing was recorded — try again.",
   playbackUnavailable: "Audio playback is not yet available in this language.",
   audioUnavailablePulaar: "Audio is not yet available in Pulaar.",
+  feedbackUp: "Helpful answer",
+  feedbackDown: "Unhelpful answer",
+  feedbackThanks: "Thanks for your feedback.",
+  feedbackCommentPlaceholder: "What was wrong? (optional)",
+  feedbackSend: "Send",
+  feedbackError: "Your feedback could not be sent. Please try again.",
 };
 
 const WO: UiTexts = {
@@ -213,6 +225,12 @@ const WO: UiTexts = {
   noSound: "Amul benn kàddu bu ñu denc — jéemaatal.",
   playbackUnavailable: "Déglu tontu bi ci kàddu amagul ci làkk bii.",
   audioUnavailablePulaar: "Déglu tontu bi ci kàddu amagul ci pulaar.",
+  feedbackUp: "Tontu bi jariñ na",
+  feedbackDown: "Tontu bi jariñul",
+  feedbackThanks: "Jërëjëf ci sa xalaat.",
+  feedbackCommentPlaceholder: "Lan moo baaxul ? (bu la neexee)",
+  feedbackSend: "Yónne",
+  feedbackError: "Sa xalaat yegul. Jéemaatal.",
 };
 
 const FF: UiTexts = {
@@ -282,6 +300,12 @@ const FF: UiTexts = {
   noSound: "Alaa daande winndaaɗe — eto kadi.",
   playbackUnavailable: "Heɗtugol daande alaa tawo e ɗemngal ngal.",
   audioUnavailablePulaar: "Heɗtugol daande alaa tawo e Pulaar.",
+  feedbackUp: "Jaabawol ngol nafii",
+  feedbackDown: "Jaabawol ngol nafaani",
+  feedbackThanks: "A jaaraama e miijo maa.",
+  feedbackCommentPlaceholder: "Hol ko moƴƴaani? (so a yiɗii)",
+  feedbackSend: "Neldu",
+  feedbackError: "Miijo maa yettaaki. Fuɗɗito.",
 };
 
 // Sereer et diola : pas encore de traduction, l interface reste en francais.

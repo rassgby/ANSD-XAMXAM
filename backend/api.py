@@ -7,33 +7,44 @@ Les formes de reponse suivent exactement les types TypeScript du frontend
 """
 
 import asyncio
-import base64
 import csv
 import hashlib
+import json
 import logging
-import hmac
 import os
 import re
 import threading
 import time
 from collections import OrderedDict
 from contextlib import asynccontextmanager
-from typing import Literal
-
-import json
 
 import agent
 import analytics
 import fastindex
-from cache import normalize, store
+import routes_admin
+import routes_voice
 import voice
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from cache import normalize, store
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, Response, StreamingResponse
-from pydantic import BaseModel, Field
+from fastapi.responses import RedirectResponse, StreamingResponse
 
 from config import MANIFEST_PATH, TOP_K
+from conversation import format_only_clause, period_only, small_talk_reply, with_format, with_period
+from limits import enforce_rate_limit
+from schemas import (
+    Citation,
+    ExplainRequest,
+    ExplainResponse,
+    HistoryTurn,
+    QueryRequest,
+    QueryResponse,
+    SourceDocument,
+    TitleRequest,
+    TitleResponse,
+    Usage,
+)
 from rag import (
     NO_DATA_MARKER,
     OPENROUTER_MODEL,
@@ -47,14 +58,9 @@ from rag import (
     acondense,
     get_embedder,
     retrieve,
-    format_only_clause,
-    period_only,
-    with_period,
     guidance_follow_up,
     guidance_question,
-    small_talk_reply,
     split_used_sources,
-    with_format,
     unknown_acronyms,
 )
 
@@ -96,6 +102,8 @@ async def lifespan(_app: FastAPI):
     # Index de recherche rapide (fastindex.py) : charge en ~1 s, ou construit depuis Chroma (~3 min)
     # au premier demarrage. En arriere-plan : en attendant, la recherche passe par Chroma.
     threading.Thread(target=fastindex.ensure, daemon=True).start()
+    # Puis suivi de la base : nouvelles publications (update_corpus.py) prises en compte sans redemarrer.
+    threading.Thread(target=fastindex.watch, daemon=True).start()
     # Index du corpus (titres, URL, sigles) : environ 2 minutes la premiere fois,
     # puis lu depuis storage/corpus_cache.json. Lance en arriere-plan pour ne pas
     # retarder le demarrage ; les requetes qui en dependent attendent la fin.
@@ -110,86 +118,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Journal, avis et tableau de bord admin ; voix (routes_admin.py, routes_voice.py).
+app.include_router(routes_admin.router)
+app.include_router(routes_voice.router)
 
 
 # ------------------------------------------------------------------ schemas
-
-class SourceRef(BaseModel):
-    title: str = Field(max_length=300)
-    page: int | None = None
-
-
-class HistoryTurn(BaseModel):
-    """Echange precedent de la discussion (question de suite : « et ces chiffres ? »)."""
-    question: str = Field(max_length=2000)
-    answer: str = Field(max_length=4000)
-    sources: list[SourceRef] = Field(default_factory=list, max_length=6)
-
-
-class QueryRequest(BaseModel):
-    question: str = Field(min_length=1, max_length=2000)
-    # « Relancer » : nouvelle reponse, sans resservir celle en cache.
-    regenerate: bool = False
-    # Derniers echanges avec leurs sources (seuls les deux derniers sont utilises).
-    history: list[HistoryTurn] = Field(default_factory=list, max_length=20)
-    language: Literal["fr", "wo", "en", "ff", "srr", "dyo"] = "fr"
-    # Comment la question a ete posee (statistiques d'usage uniquement).
-    mode: Literal["text", "voice"] = "text"
-
-
-class Citation(BaseModel):
-    document_id: str
-    document_title: str
-    # Adresse officielle du PDF sur ansd.sn (lien partageable, ex. dans une copie).
-    url: str | None = None
-    quote: str
-    page_start: int | None
-    page_end: int | None
-    verified: bool
-
-
-class Usage(BaseModel):
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
-    total_tokens: int = 0
-
-
-class DetailSource(BaseModel):
-    n: int
-    title: str
-    page: int | None = None
-    url: str | None = None
-
-
-class QueryResponse(BaseModel):
-    question: str
-    # answer : reponse tiree des publications ; no_data : rien dans le corpus ;
-    # chat : conversation courante (« bonjour », « merci »…), sans recherche ;
-    # guide : conseils et etapes pour mener ses recherches, sans chiffre.
-    kind: Literal["answer", "no_data", "chat", "guide"] = "answer"
-    # Question reformulee de maniere autonome (questions de suite), utilisee pour
-    # la recherche ; reprise par « Voir plus ».
-    standalone_question: str | None = None
-    language: str
-    answered: bool
-    answer: str
-    citations: list[Citation]
-    sources_used: list[str]
-    model: str
-    usage: Usage
-    # Reponses « guide » : publications recommandees, referencees [[n]] dans le texte.
-    sources: list[DetailSource] = Field(default_factory=list)
-    # Langues traduites automatiquement (wolof, pulaar) : la reponse francaise d'origine.
-    original_answer: str | None = None
-
-
-class SourceDocument(BaseModel):
-    id: str
-    title: str
-    publisher: str
-    publication_date: str
-    filename: str
-    description: str
 
 
 # ------------------------------------------------------------------ helpers
@@ -249,11 +183,6 @@ def figures_found_in_context(answer: str, hits: list[dict], question: str = "") 
 
 # ------------------------------------------------------------------ montee en charge
 
-RATE_LIMIT_PER_MINUTE = int(os.environ.get("RATE_LIMIT_PER_MINUTE", "20"))
-# Par adresse IP : volontairement large — au Senegal, de nombreux utilisateurs
-# partagent la meme IP publique (operateurs mobiles, universites, entreprises).
-RATE_LIMIT_IP_PER_MINUTE = int(os.environ.get("RATE_LIMIT_IP_PER_MINUTE", "600"))
-RATE_LIMIT_MESSAGE = "Trop de questions en peu de temps. Patientez une minute puis réessayez."
 
 _corpus = {"version": 0, "checked": 0.0}
 _sources_cache: dict = {"version": None, "items": []}
@@ -284,17 +213,6 @@ async def aretrieve(
     while len(_retrieval_cache) > 2000:
         _retrieval_cache.popitem(last=False)
     return hits
-
-
-def client_ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
-
-
-async def enforce_rate_limit(request: Request, client_id: str | None, per_client: int = RATE_LIMIT_PER_MINUTE) -> None:
-    if not await store.allow(f"ip:{client_ip(request)}", RATE_LIMIT_IP_PER_MINUTE) or (
-        client_id and not await store.allow(f"client:{client_id}", per_client)
-    ):
-        raise HTTPException(status_code=429, detail=RATE_LIMIT_MESSAGE, headers={"Retry-After": "60"})
 
 
 @app.get("/api/health")
@@ -346,6 +264,15 @@ async def _to_french(text: str, timeout: float = 25) -> str:
 TRANSLATED_LANGUAGES = {"wo", "ff"}
 
 
+def _in_question_language(req: QueryRequest) -> QueryRequest:
+    """Repond dans la langue de la question : si l'utilisateur change de langue en cours de discussion
+    (question en anglais alors que l'interface est en francais…), cette langue l'emporte sur le selecteur."""
+    detected = voice.detect_language(req.question)
+    if detected and detected != req.language:
+        return req.model_copy(update={"language": detected})
+    return req
+
+
 @app.post("/api/query", response_model=QueryResponse)
 async def query(
     req: QueryRequest,
@@ -356,6 +283,7 @@ async def query(
     """Point d'entree. Anglais et francais : traites directement. Wolof et pulaar : la question et
     l'historique sont traduits en francais (wolof : Soynade ; pulaar : modele local), traites comme
     une question francaise (meme recherche, meme cache), puis la reponse est traduite."""
+    req = _in_question_language(req)
     if req.language not in TRANSLATED_LANGUAGES:
         return await _query(req, request, x_client_id, x_session_id)
     lang = req.language
@@ -476,6 +404,7 @@ async def query_stream(
       {"type": "done", "response": {...}}    reponse finale (QueryResponse), qui remplace le texte recu ;
       {"type": "error", "detail": "…"}.
     Wolof : la reponse doit etre traduite en entier, elle arrive donc en une fois (« done »)."""
+    req = _in_question_language(req)
     question = req.question.strip()
     if req.language in TRANSLATED_LANGUAGES or not agent.AGENT_ENABLED:
         response = await query(req, request, x_client_id, x_session_id)
@@ -771,20 +700,6 @@ async def _answer(
     ).model_dump()
 
 
-class ExplainRequest(BaseModel):
-    question: str = Field(min_length=1, max_length=2000)
-    answer: str = Field(min_length=1, max_length=8000)
-    # Sources de la reponse courte : l'explication s'appuie d'abord sur elles.
-    sources: list[SourceRef] = Field(default_factory=list, max_length=6)
-    language: Literal["fr", "wo", "en", "ff", "srr", "dyo"] = "fr"
-
-
-class ExplainResponse(BaseModel):
-    # Texte avec des references [[n]] placees apres chaque passage, renvoyant a `sources`.
-    details: str
-    sources: list[DetailSource] = Field(default_factory=list)
-
-
 @app.post("/api/explain", response_model=ExplainResponse)
 async def explain_answer(
     req: ExplainRequest,
@@ -823,16 +738,6 @@ async def _explain(question: str, answer: str, language: str, prefer: list[tuple
     except Exception:
         logger.exception("explain failed")
         raise HTTPException(status_code=502, detail=GENERIC_ERROR_MESSAGE)
-
-
-class TitleRequest(BaseModel):
-    question: str = Field(min_length=1, max_length=2000)
-    # Langue de l'interface : le titre affiche dans l'historique est traduit dans cette langue.
-    language: Literal["fr", "wo", "en", "ff", "srr", "dyo"] = "fr"
-
-
-class TitleResponse(BaseModel):
-    title: str
 
 
 @app.post("/api/title", response_model=TitleResponse)
@@ -879,99 +784,6 @@ def publication_file(doc_id: str) -> RedirectResponse:
     raise HTTPException(status_code=404, detail="Publication introuvable.")
 
 
-class TrackRequest(BaseModel):
-    event: Literal["details_open", "listen"]
-
-
-@app.post("/api/track", status_code=204)
-async def track(
-    req: TrackRequest,
-    x_client_id: str | None = Header(default=None),
-    x_session_id: str | None = Header(default=None),
-) -> None:
-    """Interactions de l'utilisateur (« Voir plus » deplie, « Écouter ») pour
-    le tableau de bord admin."""
-    analytics.log_event(req.event, client_id=x_client_id, session_id=x_session_id)
-
-
 # ------------------------------------------------------------------ admin
 
-ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
 
-
-def require_admin(authorization: str | None = Header(default=None)) -> None:
-    """Acces au tableau de bord : `Authorization: Bearer <ADMIN_TOKEN>`."""
-    if not ADMIN_TOKEN:
-        raise HTTPException(
-            status_code=503,
-            detail="Tableau de bord désactivé : définissez ADMIN_TOKEN dans le .env du backend.",
-        )
-    token = (authorization or "").removeprefix("Bearer ").strip()
-    if not hmac.compare_digest(token.encode(), ADMIN_TOKEN.encode()):
-        raise HTTPException(status_code=401, detail="Mot de passe administrateur incorrect.")
-
-
-@app.get("/api/admin/stats", dependencies=[Depends(require_admin)])
-def admin_stats(days: int = 30) -> dict:
-    """Indicateurs d'utilisation sur les `days` derniers jours (0 = tout)."""
-    return analytics.stats(days if days > 0 else None)
-
-
-@app.get("/api/admin/questions", dependencies=[Depends(require_admin)])
-def admin_questions(
-    days: int = 30,
-    status: Literal["all", "answered", "no_data", "error"] = "all",
-    limit: int = 25,
-    offset: int = 0,
-) -> dict:
-    """Journal des questions, le plus recent en premier."""
-    return analytics.recent_questions(
-        days if days > 0 else None,
-        limit=max(1, min(limit, 200)),
-        offset=max(0, offset),
-        status=None if status == "all" else status,
-    )
-
-
-class SpeakRequest(BaseModel):
-    text: str = Field(min_length=1, max_length=8000)
-    language: Literal["fr", "wo", "en", "ff", "srr", "dyo"] = "wo"
-
-
-@app.post("/api/voice/transcribe")
-async def voice_transcribe(
-    request: Request,
-    audio: UploadFile = File(...),
-    language: str = Form("wo"),
-    x_client_id: str | None = Header(default=None),
-) -> dict:
-    """Question posee a voix haute -> texte (Soynade, voir voice.py)."""
-    await enforce_rate_limit(request, x_client_id)
-    try:
-        text = await voice.transcribe(await audio.read(), audio.filename or "", language)
-    except voice.VoiceError as exc:
-        raise HTTPException(status_code=exc.status, detail=exc.detail)
-    return {"text": text}
-
-
-@app.post("/api/voice/speak")
-async def voice_speak(
-    req: SpeakRequest, request: Request, x_client_id: str | None = Header(default=None)
-) -> Response:
-    """Lecture a voix haute d'une reponse (wolof : Soynade ; francais, anglais : Piper local, voir voice.py). 501 pour les langues
-    sans voix : le frontend retombe alors sur la synthese du navigateur."""
-    await enforce_rate_limit(request, x_client_id)
-    # Meme texte, meme audio : chaque reponse n'est synthetisee qu'une fois (quota Soynade limite).
-    key = f"tts:v3:{req.language}:{hashlib.sha1(req.text.encode('utf-8')).hexdigest()}"
-    cached = await store.get_json(key)
-    if cached:
-        return Response(content=base64.b64decode(cached["audio"]), media_type=cached["type"])
-    try:
-        content, media_type, provider = await voice.synthesize(req.text, req.language)
-    except voice.VoiceError as exc:
-        raise HTTPException(status_code=exc.status, detail=exc.detail)
-    # Voix wolof de secours (Hugging Face, locale) gardees peu de temps : la voix Soynade reprend des que son quota revient.
-    # Les voix francaise et anglaise (Piper) sont les voix normales : gardees aussi longtemps que celle de Soynade.
-    ttl = 3600 if provider in ("local", "tanle-wo") else 7 * 24 * 3600
-    await store.set_json(key, {"audio": base64.b64encode(content).decode("ascii"), "type": media_type}, ttl=ttl)
-    return Response(content=content, media_type=media_type)

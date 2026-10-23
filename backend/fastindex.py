@@ -50,6 +50,11 @@ RECENT_CANDIDATES = 50
 RELEVANCE_FLOOR = 0.45  # part du meilleur score de pertinence pour rester candidat
 RECENCY_WEIGHT = 0.35  # bonus maximal (publication de l'annee en cours), score de pertinence ramene a 1
 VALUE_WEIGHT = 0.05
+# Pages de synthese (« Principaux resultats », « Resume executif »…) : elles donnent le chiffre officiel
+# d'ensemble, la ou un tableau d'annexe donne une variante (autre periode de reference, sous-population).
+SUMMARY_WEIGHT = 0.25
+_SUMMARY_MARKERS = ('"principaux resultats"', '"resume executif"', '"principaux indicateurs"', '"resultats cles"',
+                    '"faits saillants"', '"points saillants"', '"chiffres cles"')
 
 # ------------------------------------------------------------------ dates des publications
 
@@ -253,6 +258,15 @@ class FastIndex:
         recency = np.clip((months - 2012 * 12) / span, 0, 1).astype(np.float32)
         self.row_recency = recency[self.doc_of_row]
         self.row_recent = (self.doc_years >= now.year - 1)[self.doc_of_row]
+        # Toute la page de synthese (le titre n'est que dans son premier passage).
+        self.row_summary = np.zeros(len(self.doc_of_row), dtype=bool)
+        summary_rows = [r for (r,) in con.execute(
+            "SELECT p.id FROM passages p JOIN (SELECT DISTINCT s.doc, s.page FROM passages s WHERE s.id IN "
+            "(SELECT rowid FROM fts WHERE fts MATCH ?)) m ON p.doc = m.doc AND p.page = m.page",
+            (" OR ".join(_SUMMARY_MARKERS),),
+        )]
+        if summary_rows:
+            self.row_summary[np.asarray(summary_rows, dtype=np.int64)] = True
         self._year_masks: OrderedDict[int, np.ndarray] = OrderedDict()
         self._embed_cache: OrderedDict[str, np.ndarray] = OrderedDict()
         self._lock = threading.Lock()
@@ -317,6 +331,8 @@ class FastIndex:
             doc_ids = self.docs_matching(document)
             if len(doc_ids):
                 allowed = allowed & np.isin(self.doc_of_row, doc_ids)
+                # Publication demandee : le chiffre peut etre sur la 4e page pertinente du meme rapport.
+                max_per_doc = max(max_per_doc, k)
         if year:
             allowed = allowed & self.year_mask(int(year))
         if not allowed.any():
@@ -399,6 +415,8 @@ class FastIndex:
                 score += RECENCY_WEIGHT * float(self.row_recency[row])
             if has_value(rows_data.get(row, (0, ""))[1]):
                 score += VALUE_WEIGHT
+            if self.row_summary[row]:
+                score += SUMMARY_WEIGHT
             scores[row] = score
         best = sorted(scores, key=scores.get, reverse=True)
         texts = {r: d[1] for r, d in rows_data.items()}
@@ -468,6 +486,22 @@ def ensure() -> None:
         except Exception as exc:
             _state.update(status="error", error=f"{type(exc).__name__}: {exc}")
             logger.exception("index rapide indisponible : recherche via Chroma")
+
+
+REFRESH_SECONDS = 600
+
+
+def watch() -> None:
+    """Boucle (thread du backend) : reconstruit l'index des que la base Chroma change de taille
+    (nouvelles publications indexees par update_corpus.py). L'ancien index sert pendant ce temps."""
+    while True:
+        time.sleep(REFRESH_SECONDS)
+        try:
+            if _index is not None and rag.get_collection().count() != _index.count:
+                logger.info("la base a change : mise a jour de l'index rapide")
+                ensure()
+        except Exception:
+            logger.exception("verification de l'index rapide impossible")
 
 
 class _FileLock:

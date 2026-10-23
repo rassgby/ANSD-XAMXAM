@@ -63,7 +63,9 @@ function SidebarContent({
   const t = useUi();
   const [query, setQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
-  const groups = groupSessions(sessions.filter((s) => sessionMatches(s, query)), Date.now(), {
+  // Heure de reference des groupes « Aujourd'hui », « Hier »… : celle de l'ouverture de la barre.
+  const [now] = useState(() => Date.now());
+  const groups = groupSessions(sessions.filter((s) => sessionMatches(s, query)), now, {
     today: t("today"), yesterday: t("yesterday"), last7Days: t("last7Days"), older: t("older"),
   });
 

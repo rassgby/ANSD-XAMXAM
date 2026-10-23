@@ -35,6 +35,7 @@ logger = logging.getLogger("ansd-voice")
 
 SOYNADE_BASE_URL = os.environ.get("SOYNADE_BASE_URL", "https://api.soynade.ai").rstrip("/")
 ASR_LANGUAGES = {"wo", "fr", "en"}  # langues du modele de reconnaissance Soynade
+VOXTRAL_MODEL = os.environ.get("VOXTRAL_MODEL", "voxtral-mini-latest")  # reconnaissance fr/en, langue detectee
 TTS_LANGUAGES = {"wo"}  # synthese : seul le wolof est documente chez Soynade
 TTS_MAX_CHARS = int(os.environ.get("SOYNADE_TTS_MAX_CHARS", "500"))
 MAX_UPLOAD_BYTES = 25_000_000  # bien sous la limite Soynade (50 Mo d'audio)
@@ -124,15 +125,64 @@ def _check_response(resp: httpx.Response) -> None:
     raise VoiceError(502, SERVICE_ERROR)
 
 
-async def transcribe(audio: bytes, filename: str, language: str) -> str:
-    key = _api_key()
-    if language not in ASR_LANGUAGES:
-        raise VoiceError(501, UNAVAILABLE)
+async def transcribe(audio: bytes, filename: str, language: str) -> tuple[str, str]:
+    """Question posee a voix haute -> (texte, langue parlee). La langue parlee est detectee, quelle
+    que soit celle de l'interface : l'utilisateur peut changer de langue en cours de discussion.
+    Francais et anglais : Voxtral (Mistral), qui reconnait seul la langue. Wolof : Soynade, qui ne
+    detecte pas la langue (il traduit l'anglais dans la langue demandee) mais transcrit bien le wolof
+    et laisse le francais tel quel."""
     if not audio:
         raise VoiceError(400, BAD_AUDIO)
     if len(audio) > MAX_UPLOAD_BYTES:
         raise VoiceError(413, "Enregistrement trop long.")
     wav = await _to_wav(audio, filename)
+    has_voxtral = bool(os.environ.get("MISTRAL_API_KEY", "").strip())
+    has_soynade = bool(os.environ.get("SOYNADE_API_KEY", "").strip())
+    if not has_voxtral:  # ancien fonctionnement : la langue de l'interface
+        if language not in ASR_LANGUAGES:
+            raise VoiceError(501, UNAVAILABLE)
+        return await _soynade_transcribe(wav, language), language
+    # Interface en wolof : les deux en parallele (on attend surtout du wolof, sans payer deux allers-retours).
+    soynade = asyncio.create_task(_soynade_transcribe(wav, "wo")) if has_soynade and language == "wo" else None
+    try:
+        text = await _voxtral_transcribe(wav)
+    except VoiceError:
+        if soynade is None:
+            raise
+        text = ""
+    spoken = detect_language(text) if text else None
+    if spoken in ("fr", "en") and not (soynade and spoken == "fr"):
+        if soynade:
+            soynade.cancel()
+        return text, spoken
+    # Ni francais ni anglais reconnaissable (du wolof transcrit phonetiquement) : Soynade, en wolof.
+    if not has_soynade:
+        return text, spoken or language
+    wolof = await (soynade or _soynade_transcribe(wav, "wo"))
+    return wolof, detect_language(wolof) or "wo"
+
+
+async def _voxtral_transcribe(wav: bytes) -> str:
+    try:
+        resp = await _http().post(
+            "https://api.mistral.ai/v1/audio/transcriptions",
+            headers={"Authorization": f"Bearer {os.environ['MISTRAL_API_KEY'].strip()}"},
+            files={"file": ("recording.wav", wav, "audio/wav")},
+            data={"model": VOXTRAL_MODEL},
+            timeout=ASR_TIMEOUT,
+        )
+    except httpx.HTTPError:
+        logger.warning("voxtral: transcription injoignable")
+        raise VoiceError(502, SERVICE_ERROR)
+    if resp.status_code != 200:
+        logger.warning("voxtral: transcription HTTP %s", resp.status_code)
+        raise VoiceError(502, SERVICE_ERROR)
+    text = resp.json().get("text")
+    return text.strip() if isinstance(text, str) else ""
+
+
+async def _soynade_transcribe(wav: bytes, language: str) -> str:
+    key = _api_key()
     try:
         resp = await _http().post(
             f"{SOYNADE_BASE_URL}/v1/audio/transcriptions",
@@ -695,6 +745,50 @@ def looks_wolof(text: str) -> bool:
     wolof = sum(w in _WOLOF_WORDS for w in words) + (2 if re.search(r"[ñëŋ]", low) else 0)
     french = sum(w in _FRENCH_WORDS for w in words)
     return wolof >= french and wolof > 0
+
+
+# Detection de la langue d'une question, pour repondre dans la langue ou elle est posee meme si
+# l'utilisateur change de langue en cours de discussion sans toucher au selecteur de l'interface.
+_ENGLISH_WORDS = {
+    "the", "is", "are", "was", "were", "what", "which", "who", "how", "many", "much", "of", "and", "in", "for",
+    "with", "does", "do", "did", "can", "could", "you", "your", "me", "give", "show", "tell", "about", "rate",
+    "population", "number", "people", "year", "years", "please", "thanks", "thank", "hello", "hi", "there",
+    "according", "between", "it", "this", "that", "has", "have", "senegal", "what's", "where", "when", "why",
+}
+_PULAAR_WORDS = {
+    "hol", "noy", "ko", "ɗum", "ɗun", "ɓe", "ɗee", "ɗo", "nde", "ndee", "ngal", "ngol", "kala", "e", "nder",
+    "yimɓe", "yimbe", "hitaande", "duuɓi", "duubi", "foti", "no", "aɗa", "ada", "ena", "ina", "woni", "woodi",
+    "jaraama", "on", "mi", "miɗo", "mido", "njaŋde", "senegaal", "leydi", "jamaanu", "jaabaw",
+}
+# Mots trop courts ou communs a plusieurs langues : ne comptent pas seuls.
+_AMBIGUOUS = {"a", "e", "on", "no", "mi", "ma", "ci", "si", "in", "is", "it", "me", "am", "ba", "la"}
+
+
+def detect_language(text: str) -> str | None:
+    """Langue d'une question ("fr", "en", "wo", "ff"), ou None si elle n'est pas reconnaissable
+    avec assez de confiance (« ok », « merci », un nombre…) : on garde alors la langue choisie."""
+    low = text.lower()
+    words = [w for w in re.findall(r"[\wëñŋɓɗƴ']+", low) if not w.isdigit()]
+    if not words:
+        return None
+    scores = {
+        "fr": sum(w in _FRENCH_WORDS or w in ("bonjour", "merci", "salut") for w in words if w not in _AMBIGUOUS),
+        "en": sum(w in _ENGLISH_WORDS for w in words if w not in _AMBIGUOUS),
+        "wo": sum(w in _WOLOF_WORDS for w in words if w not in _AMBIGUOUS),
+        "ff": sum(w in _PULAAR_WORDS for w in words if w not in _AMBIGUOUS),
+    }
+    # Lettres propres a une langue : signal fort.
+    if re.search(r"[ɓɗƴ]", low):
+        scores["ff"] += 3
+    if re.search(r"[ëñ]", low):
+        scores["wo"] += 2
+    if re.search(r"[àâçéèêîïôûùœ]", low):
+        scores["fr"] += 1
+    best = max(scores, key=scores.get)
+    ranked = sorted(scores.values(), reverse=True)
+    if ranked[0] < 1 or ranked[0] == ranked[1]:
+        return None
+    return best
 
 
 def _french_ratio(text: str) -> float:

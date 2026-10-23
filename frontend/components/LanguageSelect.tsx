@@ -26,7 +26,6 @@ export function LanguageSelect({ value, onChange }: { value: Lang; onChange?: (l
 
   useEffect(() => {
     if (!open) return;
-    setActive(LANGS.indexOf(current));
     listRef.current?.focus();
     const onPointerDown = (e: PointerEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
@@ -64,7 +63,11 @@ export function LanguageSelect({ value, onChange }: { value: Lang; onChange?: (l
         aria-expanded={open}
         aria-controls={listId}
         aria-label={`${t("language")} : ${LANG_LABELS[current]}`}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          // A l'ouverture, la langue courante est pre-selectionnee pour le clavier.
+          if (!open) setActive(LANGS.indexOf(current));
+          setOpen(!open);
+        }}
         className="flex h-9 items-center gap-1.5 rounded-full border border-slate-200 bg-white pl-2.5 pr-2 text-xs font-semibold text-brand-800 shadow-sm transition-colors hover:border-brand-300 hover:bg-brand-50 sm:h-10 sm:gap-2 sm:pl-3.5 sm:pr-3 sm:text-sm"
       >
         <Globe2 size={15} className="shrink-0 text-brand-500" />

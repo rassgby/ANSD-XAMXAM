@@ -47,6 +47,12 @@ La base vectorielle (`backend/storage/`) n'est pas dans Git (taille). Deux possi
   cd backend && docker compose exec backend python ingest.py
   ```
 
+Ensuite, le service `corpus-updater` ajoute chaque semaine les nouvelles publications de l'ANSD (`CORPUS_UPDATE_DAYS`, 7 par défaut). Pour le lancer à la main :
+
+```bash
+cd backend && docker compose exec backend python update_corpus.py
+```
+
 ### 5. Lancer
 
 ```bash
@@ -72,9 +78,9 @@ Une fois terminé :
 
 `--api-url` est l'adresse de l'API vue par le navigateur : elle est intégrée à l'interface au moment du build, la changer impose de relancer `deploy.sh`.
 
-### Sous Windows (sans bash)
+### Sous Windows
 
-`start-all.bat` démarre backend et frontend avec Docker Compose, `stop-all.bat` les arrête.
+Lancer `./deploy.sh` depuis Git Bash ou WSL (voir les prérequis).
 
 ### Suivi et dépannage
 
@@ -83,6 +89,14 @@ cd backend  && docker compose logs -f      # journaux de l'API
 cd frontend && docker compose logs -f      # journaux de l'interface
 curl http://localhost:8000/api/health      # état de l'API
 ```
+
+### Données d'utilisation
+
+Le tableau de bord `/admin` affiche les questions posées et les avis des utilisateurs (« utile / pas utile », avec commentaire). Ces données sont supprimées au-delà de `ANALYTICS_RETENTION_DAYS` jours (365 par défaut, `0` pour tout garder).
+
+### Vérifications
+
+À chaque envoi sur GitHub, les tests du backend, le lint et les types du frontend sont vérifiés (`.github/workflows/ci.yml`). Après un changement qui touche aux réponses, lancer aussi les questions de référence (voir [backend/README.md](backend/README.md)).
 
 ## Voix
 
