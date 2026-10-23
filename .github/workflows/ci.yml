@@ -38,7 +38,8 @@ jobs:
       - run: npm run lint
       - run: npx tsc --noEmit
 
-  # Redeploiement sur le serveur apres chaque push sur main, si les tests passent.
+  # Redeploiement du backend sur le serveur apres chaque push sur main, si les tests passent.
+  # Le frontend est heberge sur Vercel, qui se redeploie lui-meme a chaque push : jamais sur ce serveur.
   # Configuration (secrets et variables du depot) : voir « Deploiement automatique » dans README.md.
   deploy:
     needs: [backend, frontend]
@@ -81,12 +82,8 @@ jobs:
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '~/ANSD-XAMXAM' }}
           DEPLOY_ARGS: ${{ vars.DEPLOY_ARGS }}
-          API_URL: ${{ vars.DEPLOY_API_URL }}
-          FRONT_URL: ${{ vars.DEPLOY_FRONT_URL }}
         run: |
-          args="$DEPLOY_ARGS"
-          [ -n "$API_URL" ] && args="$args --api-url $API_URL"
-          [ -n "$FRONT_URL" ] && args="$args --front-url $FRONT_URL"
+          args="--backend-only $DEPLOY_ARGS"
           # Le serveur avance jusqu'au commit teste (avance rapide seulement : une modification faite
           # a la main sur le serveur bloque le deploiement au lieu d'etre ecrasee), puis deploy.sh.
           ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" -o BatchMode=yes -o ServerAliveInterval=30 \

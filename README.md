@@ -101,7 +101,7 @@ Le tableau de bord `/admin` affiche les questions posées et les avis des utilis
 
 ### Déploiement automatique
 
-Après chaque `git push` sur `main`, si les vérifications passent, GitHub Actions (job `deploy` de `.github/workflows/ci.yml`) se connecte au serveur en SSH, avance le dépôt du serveur jusqu'au commit testé (`git merge --ff-only`) et relance `./deploy.sh`. Un seul déploiement tourne à la fois. Pour redéployer sans nouveau commit : onglet **Actions** → **CI** → **Run workflow**.
+Après chaque `git push` sur `main`, si les vérifications passent, GitHub Actions (job `deploy` de `.github/workflows/ci.yml`) se connecte au serveur en SSH, avance le dépôt du serveur jusqu'au commit testé (`git merge --ff-only`) et relance `./deploy.sh --backend-only` : le serveur n'héberge que l'API. L'interface est hébergée sur Vercel, qui la redéploie lui-même à chaque push. Un seul déploiement tourne à la fois. Pour redéployer sans nouveau commit : onglet **Actions** → **CI** → **Run workflow**.
 
 Mise en place, une seule fois :
 
@@ -123,9 +123,7 @@ Mise en place, une seule fois :
    | `DEPLOY_KNOWN_HOSTS` | secret | résultat de `ssh-keyscan -p <port> <serveur>` |
    | `DEPLOY_PORT` | secret | port SSH (facultatif, 22 par défaut) |
    | `DEPLOY_PATH` | variable | dossier du dépôt sur le serveur (défaut `~/ANSD-XAMXAM`) |
-   | `DEPLOY_API_URL` | variable | `--api-url` (adresse publique de l'API) |
-   | `DEPLOY_FRONT_URL` | variable | `--front-url` (adresse publique de l'interface) |
-   | `DEPLOY_ARGS` | variable | autres options de `deploy.sh`, facultatif : `--backend-only` si l'interface est hébergée ailleurs, `--scale` |
+   | `DEPLOY_ARGS` | variable | options supplémentaires de `deploy.sh`, facultatif (ex. `--scale`) |
 
    Sans `DEPLOY_HOST`, le job `deploy` est ignoré (avertissement dans Actions). L'environnement `production` permet aussi, si besoin, d'exiger une approbation manuelle avant chaque déploiement (*Required reviewers*).
 
