@@ -5,6 +5,7 @@
 #   ./deploy.sh --api-url https://api.exemple.sn --front-url https://exemple.sn
 #   ./deploy.sh --scale                           # plusieurs instances du backend derriere Nginx
 #   ./deploy.sh --pull                            # recupere d'abord la derniere version (git pull)
+#   ./deploy.sh --backend-only                    # API seule (frontend heberge ailleurs)
 #   ./deploy.sh --down                            # arrete tous les services
 #
 # Prerequis : Docker Engine + Docker Compose v2.24+, et backend/.env rempli
@@ -21,13 +22,14 @@ FRONT_URL=""
 SCALE=0
 PULL=0
 DOWN=0
+BACKEND_ONLY=0
 HEALTH_TIMEOUT=600   # le premier demarrage construit l'index de recherche (~3 min)
 
 info()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn()  { printf '\033[1;33m[ATTENTION]\033[0m %s\n' "$*"; }
 fail()  { printf '\033[1;31m[ERREUR]\033[0m %s\n' "$*" >&2; exit 1; }
 
-usage() { sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0; }
+usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -35,6 +37,7 @@ while [ $# -gt 0 ]; do
     --front-url) FRONT_URL="${2:?--front-url attend une URL}"; shift 2 ;;
     --scale)     SCALE=1; shift ;;
     --pull)      PULL=1; shift ;;
+    --backend-only) BACKEND_ONLY=1; shift ;;
     --down)      DOWN=1; shift ;;
     -h|--help)   usage ;;
     *)           fail "option inconnue : $1 (voir --help)" ;;
@@ -102,9 +105,13 @@ cd "$BACKEND"
 "${BACKEND_COMPOSE[@]}" up --build -d --remove-orphans
 
 # --- Frontend --------------------------------------------------------------
-info "[2/2] Frontend (API vue par le navigateur : $NEXT_PUBLIC_API_URL)..."
-cd "$FRONTEND"
-docker compose up --build -d --remove-orphans
+if [ "$BACKEND_ONLY" -eq 1 ]; then
+  info "[2/2] Frontend ignore (--backend-only)."
+else
+  info "[2/2] Frontend (API vue par le navigateur : $NEXT_PUBLIC_API_URL)..."
+  cd "$FRONTEND"
+  docker compose up --build -d --remove-orphans
+fi
 
 # --- Attente que tout reponde ----------------------------------------------
 wait_for() {
@@ -126,7 +133,7 @@ if command -v curl >/dev/null 2>&1; then
   info "Verification des services..."
   wait_for "l'API" "http://localhost:8000/api/health" \
     || fail "L'API ne repond pas apres ${HEALTH_TIMEOUT}s. Logs : cd backend && ${BACKEND_COMPOSE[*]} logs --tail 100"
-  wait_for "l'interface" "http://localhost:3000" \
+  [ "$BACKEND_ONLY" -eq 1 ] || wait_for "l'interface" "http://localhost:3000" \
     || fail "L'interface ne repond pas. Logs : cd frontend && docker compose logs --tail 100"
 else
   warn "curl absent : verification de sante ignoree."

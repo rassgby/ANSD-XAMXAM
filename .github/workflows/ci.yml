@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:  # « Run workflow » dans l'onglet Actions : redeploie sans nouveau commit
 
 jobs:
   backend:
@@ -36,3 +37,66 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npx tsc --noEmit
+
+  # Redeploiement sur le serveur apres chaque push sur main, si les tests passent.
+  # Configuration (secrets et variables du depot) : voir « Deploiement automatique » dans README.md.
+  deploy:
+    needs: [backend, frontend]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: production
+    # Un deploiement a la fois ; un push pendant un deploiement attend la fin de celui-ci.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    timeout-minutes: 30
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+    steps:
+      - name: Configuration presente ?
+        id: config
+        run: |
+          if [ -z "$DEPLOY_HOST" ]; then
+            echo "::warning::Secret DEPLOY_HOST absent : deploiement ignore (voir README.md, Deploiement automatique)."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cle SSH
+        if: steps.config.outputs.enabled == 'true'
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Deploiement
+        if: steps.config.outputs.enabled == 'true'
+        env:
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '~/xamxam' }}
+          DEPLOY_ARGS: ${{ vars.DEPLOY_ARGS }}
+          API_URL: ${{ vars.DEPLOY_API_URL }}
+          FRONT_URL: ${{ vars.DEPLOY_FRONT_URL }}
+        run: |
+          args="$DEPLOY_ARGS"
+          [ -n "$API_URL" ] && args="$args --api-url $API_URL"
+          [ -n "$FRONT_URL" ] && args="$args --front-url $FRONT_URL"
+          # Le serveur avance jusqu'au commit teste (avance rapide seulement : une modification faite
+          # a la main sur le serveur bloque le deploiement au lieu d'etre ecrasee), puis deploy.sh.
+          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" -o BatchMode=yes -o ServerAliveInterval=30 \
+            "$DEPLOY_USER@$DEPLOY_HOST" bash -s -- "$DEPLOY_PATH" "$GITHUB_SHA" $args <<'REMOTE'
+          set -euo pipefail
+          path="$1"; sha="$2"; shift 2
+          cd "${path/#\~/$HOME}"
+          git fetch --prune origin main
+          git checkout -q main
+          git merge --ff-only "$sha"
+          echo "Version deployee : $(git log -1 --format='%h %s')"
+          ./deploy.sh "$@"
+          REMOTE

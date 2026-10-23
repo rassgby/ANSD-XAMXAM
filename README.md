@@ -72,6 +72,7 @@ Une fois terminé :
 ./deploy.sh --api-url https://api.exemple.sn --front-url https://exemple.sn   # serveur public
 ./deploy.sh --scale     # plusieurs instances du backend derrière Nginx
 ./deploy.sh --pull      # récupère d'abord la dernière version (git pull)
+./deploy.sh --backend-only  # API seule (interface hébergée ailleurs)
 ./deploy.sh --down      # arrête tous les services
 ./deploy.sh --help
 ```
@@ -97,6 +98,38 @@ Le tableau de bord `/admin` affiche les questions posées et les avis des utilis
 ### Vérifications
 
 À chaque envoi sur GitHub, les tests du backend, le lint et les types du frontend sont vérifiés (`.github/workflows/ci.yml`). Après un changement qui touche aux réponses, lancer aussi les questions de référence (voir [backend/README.md](backend/README.md)).
+
+### Déploiement automatique
+
+Après chaque `git push` sur `main`, si les vérifications passent, GitHub Actions (job `deploy` de `.github/workflows/ci.yml`) se connecte au serveur en SSH, avance le dépôt du serveur jusqu'au commit testé (`git merge --ff-only`) et relance `./deploy.sh`. Un seul déploiement tourne à la fois. Pour redéployer sans nouveau commit : onglet **Actions** → **CI** → **Run workflow**.
+
+Mise en place, une seule fois :
+
+1. **Sur le serveur** : cloner le dépôt (par exemple dans `~/xamxam`), remplir `backend/.env`, et réussir un premier `./deploy.sh` à la main. L'utilisateur SSH doit pouvoir lancer `docker` sans `sudo` (groupe `docker`) et faire `git fetch` (dépôt privé : clé de déploiement GitHub en lecture seule sur le serveur).
+2. **Une clé SSH réservée au déploiement**, créée sur votre poste :
+
+   ```bash
+   ssh-keygen -t ed25519 -N "" -C github-deploy -f xamxam_deploy
+   ```
+
+   Ajouter `xamxam_deploy.pub` à `~/.ssh/authorized_keys` de l'utilisateur du serveur.
+3. **Sur GitHub** : *Settings → Environments → New environment* `production`, puis y ajouter :
+
+   | Nom | Type | Valeur |
+   |---|---|---|
+   | `DEPLOY_HOST` | secret | adresse du serveur |
+   | `DEPLOY_USER` | secret | utilisateur SSH |
+   | `DEPLOY_SSH_KEY` | secret | contenu de `xamxam_deploy` (clé privée) |
+   | `DEPLOY_KNOWN_HOSTS` | secret | résultat de `ssh-keyscan -p <port> <serveur>` |
+   | `DEPLOY_PORT` | secret | port SSH (facultatif, 22 par défaut) |
+   | `DEPLOY_PATH` | variable | dossier du dépôt sur le serveur (défaut `~/xamxam`) |
+   | `DEPLOY_API_URL` | variable | `--api-url` (adresse publique de l'API) |
+   | `DEPLOY_FRONT_URL` | variable | `--front-url` (adresse publique de l'interface) |
+   | `DEPLOY_ARGS` | variable | autres options de `deploy.sh`, facultatif : `--backend-only` si l'interface est hébergée ailleurs, `--scale` |
+
+   Sans `DEPLOY_HOST`, le job `deploy` est ignoré (avertissement dans Actions). L'environnement `production` permet aussi, si besoin, d'exiger une approbation manuelle avant chaque déploiement (*Required reviewers*).
+
+Ne modifiez pas les fichiers suivis par Git directement sur le serveur : l'avance rapide échouerait et le déploiement s'arrêterait (le site garde alors la version précédente).
 
 ## Voix
 
