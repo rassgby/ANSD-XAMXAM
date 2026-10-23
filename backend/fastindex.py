@@ -53,6 +53,8 @@ VALUE_WEIGHT = 0.05
 # Pages de synthese (« Principaux resultats », « Resume executif »…) : elles donnent le chiffre officiel
 # d'ensemble, la ou un tableau d'annexe donne une variante (autre periode de reference, sous-population).
 SUMMARY_WEIGHT = 0.25
+# Resultats preliminaires d'une operation (recensement…) : remplaces par les rapports suivants.
+PRELIMINARY_PENALTY = 0.15
 _SUMMARY_MARKERS = ('"principaux resultats"', '"resume executif"', '"principaux indicateurs"', '"resultats cles"',
                     '"faits saillants"', '"points saillants"', '"chiffres cles"')
 
@@ -154,6 +156,10 @@ def key_phrase(query: str) -> str:
 _VALUE_RE = re.compile(r"\d+[,.]\d+\s?%|\b\d{1,3}(?:[\s  ]\d{3}){2,}\b")
 
 
+def is_preliminary(title: str) -> bool:
+    return "preliminaire" in rag._norm(title or "")
+
+
 def has_value(text: str) -> bool:
     return bool(_VALUE_RE.search(text))
 
@@ -251,6 +257,7 @@ class FastIndex:
         self.doc_years = np.array([d[3] for d in docs], dtype=np.int32)
         self.doc_orders = np.array([d[4] for d in docs], dtype=np.int32)
         self.title_ids = {t: i for i, t in enumerate(self.titles)}
+        self.doc_preliminary = np.array([is_preliminary(t) for t in self.titles], dtype=bool)
         # Fraicheur au mois pres (T2-2026 > T1-2026), de 0 (2012 ou avant) a 1 (aujourd'hui).
         now = datetime.date.today()
         months = (self.doc_orders // 100) * 12 + np.clip(self.doc_orders % 100, 0, 12)
@@ -323,7 +330,10 @@ class FastIndex:
         document: str | None = None,
         latest: bool = True,
         max_per_doc: int = 3,
+        with_next: bool = False,
     ) -> list[dict]:
+        """Passages les plus pertinents. with_next : chaque passage est suivi du passage suivant de la
+        meme page (un tableau est souvent coupe entre son en-tete et ses lignes)."""
         if not query.strip():
             return []
         allowed = ~self.toc
@@ -415,8 +425,14 @@ class FastIndex:
                 score += RECENCY_WEIGHT * float(self.row_recency[row])
             if has_value(rows_data.get(row, (0, ""))[1]):
                 score += VALUE_WEIGHT
-            if self.row_summary[row]:
-                score += SUMMARY_WEIGHT
+            if self.row_summary[row] and words:
+                # Bonus a la mesure des mots de la question presents : une synthese d'un autre chapitre
+                # du meme rapport (« Resume executif » des menages pour une question d'urbanisation) n'en a pas.
+                text_words = set(keywords(rows_data.get(row, (0, ""))[1]))
+                covered = sum(any(t.startswith(w) for t in text_words) for w in words) / len(words)
+                score += SUMMARY_WEIGHT * covered ** 2
+            if self.doc_preliminary[self.doc_of_row[row]]:
+                score -= PRELIMINARY_PENALTY
             scores[row] = score
         best = sorted(scores, key=scores.get, reverse=True)
         texts = {r: d[1] for r, d in rows_data.items()}
@@ -439,9 +455,25 @@ class FastIndex:
                 "url": self.urls[doc],
                 "score": round(scores[row], 5),
                 "order": int(self.doc_orders[doc]),
+                "row": int(row),
             })
             if len(picked) >= k:
                 break
+        if with_next and picked:
+            nexts = {
+                rid: (doc, page, text)
+                for rid, doc, page, text in self._db().execute(
+                    f"SELECT id, doc, page, text FROM passages WHERE id IN ({','.join('?' * len(picked))})",
+                    [h["row"] + 1 for h in picked],
+                )
+            }
+            for h in picked:
+                nxt = nexts.get(h["row"] + 1)
+                if nxt and nxt[0] == self.doc_of_row[h["row"]] and nxt[1] == h["page"]:
+                    h["text"] = f"{h['text']} {nxt[2]}"
+                    h["with_next"] = True
+        for h in picked:
+            del h["row"]
         return picked  # du plus pertinent au moins pertinent (fraicheur comprise)
 
 

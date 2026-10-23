@@ -38,7 +38,7 @@ from fastindex import doc_year, has_value, keywords, period_label, pub_date
 logger = logging.getLogger("ansd-agent")
 
 AGENT_ENABLED = os.environ.get("AGENT_ENABLED", "1").strip().lower() not in {"0", "false", "no", ""}
-AGENT_VERSION = "v9"  # dans la cle de cache des reponses : a changer quand le comportement de l'agent change
+AGENT_VERSION = "v10"  # dans la cle de cache des reponses : a changer quand le comportement de l'agent change
 # Fournisseur principal : Mistral (API directe). OpenRouter sert de secours (modele AGENT_MODEL).
 MISTRAL_BASE_URL = os.environ.get("MISTRAL_BASE_URL", "https://api.mistral.ai/v1").rstrip("/")
 # Version datee (et non « -latest ») : le comportement ne change pas a l'insu du projet.
@@ -68,10 +68,14 @@ def search_passages(
     latest: bool = True,
     k: int = PASSAGES_PER_SEARCH,
 ) -> list[dict]:
-    """Passages les plus pertinents : index rapide (~0,1 s) ; Chroma en secours tant qu'il se construit."""
+    """Passages les plus pertinents : index rapide (~0,1 s) ; Chroma en secours tant qu'il se construit.
+    Dans une publication nommee, chaque passage est suivi de la suite de sa page (tableaux coupes)."""
     index = fastindex.get()
     if index is not None:
-        return index.search(query, k=k, year=year, document=document, latest=latest, max_per_doc=MAX_PER_DOCUMENT)
+        return index.search(
+            query, k=k, year=year, document=document, latest=latest, max_per_doc=MAX_PER_DOCUMENT,
+            with_next=bool(document and document.strip()),
+        )
     with _chroma_lock:
         return _chroma_search(query, year, document, latest, k)
 
@@ -225,6 +229,8 @@ RÈGLES DE FOND
 1. Tout chiffre, toute date et tout fait statistique sur le Sénégal viennent des passages obtenus, jamais de ta mémoire.
 2. Sois exact sur le périmètre : lieu (national, région, commune), période, population, unité, définition. Si les \
 passages donnent le niveau national alors qu'on demande une région, ou une autre année, dis-le au lieu de substituer. \
+Si l'utilisateur nomme une publication (« selon le RGPH-5 », « la dernière EDS »), donne le chiffre de cette publication \
+(rapport définitif plutôt que résultats préliminaires), pas une projection ou une mise à jour d'une autre publication. \
 Si tu ne trouves pas, dis-le franchement et brièvement ; tu peux seulement proposer un indicateur voisin \
 présent dans les publications de l'ANSD.
 7. Tu te limites strictement à la base documentaire de l'ANSD : ne renvoie jamais vers des sources externes, des sites, \
@@ -351,8 +357,10 @@ class _Run:
                 hits.append(h)
         # Les plus recents d'abord : un modele leger retient surtout les premiers passages, et la question
         # sans periode demande la derniere valeur (ces passages sont deja tous pertinents).
+        # Publication nommee d'abord ; ses resultats preliminaires apres ses rapports suivants.
         hits.sort(key=lambda h: (
             not (named and f" {named} " in f" {rag._norm(h['source'])} "),
+            fastindex.is_preliminary(h["source"]),
             -fastindex.doc_order(h["source"], h.get("url")),
         ))
         self.searches += 1
@@ -369,7 +377,7 @@ class _Run:
         for h in hits:
             n = len(self.passages) + 1
             self.passages[n] = h
-            text = " ".join(h["text"].split())[:PASSAGE_CHARS]
+            text = " ".join(h["text"].split())[: PASSAGE_CHARS * (2 if h.get("with_next") else 1)]
             blocks.append(f"[{n}] {h['source']} ({_pub_label(h['source'], h.get('url'))}) — page {h['page']}\n{text}")
         result = "\n\n".join(blocks)
         if not any(has_value(h["text"]) for h in hits):

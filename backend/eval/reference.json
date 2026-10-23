@@ -21,8 +21,10 @@
   "question": "Quelle est la population de la région de Thiès au RGPH-5 ?",
   "language": "fr",
   "expected": [
-   "2 587 092"
-  ]
+   "2 463 677"
+  ],
+  "source": "RGPH-5",
+  "note": "RGPH-5 p. 70-71 (2023). 2 587 092 est la projection 2025 du Rapport annuel sur la Population."
  },
  {
   "id": "menages-nombre",
@@ -47,8 +49,10 @@
   "question": "Quelle part de la population sénégalaise vit en milieu urbain selon le RGPH-5 ?",
   "language": "fr",
   "expected": [
-   "55,1"
-  ]
+   "54,7"
+  ],
+  "source": "RGPH-5",
+  "note": "RGPH-5 p. 42 et 76-78 (2023). 55,1 % est la projection 2025 du Rapport annuel sur la Population."
  },
  {
   "id": "age-moyen",
